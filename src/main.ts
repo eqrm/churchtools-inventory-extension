@@ -27,8 +27,24 @@ export { KEY };
 
 const user = await churchtoolsClient.get<Person>(`/whoami`);
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div style="display: flex; place-content: center; place-items: center; height: 100vh;">
-    <h1>Welcome ${[user.firstName, user.lastName].join(' ')}</h1>
-  </div>
+// Initialize the extension UI
+import { initInventory } from './inventory';
+
+const app = document.querySelector<HTMLDivElement>('#app')!;
+app.innerHTML = `
+    <div style="max-width:900px;margin:18px auto;padding:12px">
+        <div id="ct-user" style="margin-bottom:12px"></div>
+        <div id="ct-inventory"></div>
+    </div>
 `;
+
+(document.querySelector('#ct-user') as HTMLDivElement).textContent = `Signed in as ${[user.firstName, user.lastName].join(' ')}`;
+
+initInventory(document.querySelector('#ct-inventory') as HTMLDivElement, {
+        // example syncHandler: send to ChurchTools custom module endpoint (if available)
+        syncHandler: async (items) => {
+                // This is a placeholder. You can POST/PUT to your module endpoint here.
+                // Example: await churchtoolsClient.post(`/custommodules/${KEY}/inventory/sync`, items);
+                console.log('Sync handler called with items', items);
+        }
+});
