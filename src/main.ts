@@ -46,5 +46,9 @@ initInventory(document.querySelector('#ct-inventory') as HTMLDivElement, {
                 // This is a placeholder. You can POST/PUT to your module endpoint here.
                 // Example: await churchtoolsClient.post(`/custommodules/${KEY}/inventory/sync`, items);
                 console.log('Sync handler called with items', items);
+        },
+        currentUser: {
+                firstName: user.firstName ?? 'Unknown',
+                lastName: user.lastName ?? 'User'
         }
 });
