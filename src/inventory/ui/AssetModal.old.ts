@@ -1,0 +1,763 @@
+// Asset detail modal UI component
+import type { InventoryItem, InventorySettings, PrefixCounters } from '../types';
+import { FIXED_STATUSES } from '../constants';
+import { createEl, genId, fmtDate } from '../utils';
+import { createSearchableDropdown } from '../components/SearchableDropdown';
+import { createPersonSearcher } from '../components/PersonSearcher';
+import { createMasterdataSearcher } from '../components/MasterdataSearcher';
+import { createBarcodeWidget } from './BarcodeWidget';
+import { nextAssetId } from '../services/assetId.service';
+import { saveSettings } from '../services/storage.service';
+
+/**
+ * Generate Code 128 barcode as SVG
+ * Code 128 is a high-density barcode that can encode all 128 ASCII characters
+ */
+function generateBarcodePattern(text: string, width: number = 200, height: number = 50): SVGElement {
+    // Code 128 encoding patterns (each pattern is 11 modules wide, 6 elements: 3 bars, 3 spaces)
+    // Pattern format: [bar, space, bar, space, bar, space] widths (1-4 modules each)
+    const CODE128 = [
+        [2,1,2,2,2,2], [2,2,2,1,2,2], [2,2,2,2,2,1], [1,2,1,2,2,3], [1,2,1,3,2,2],
+        [1,3,1,2,2,2], [1,2,2,2,1,3], [1,2,2,3,1,2], [1,3,2,2,1,2], [2,2,1,2,1,3],
+        [2,2,1,3,1,2], [2,3,1,2,1,2], [1,1,2,2,3,2], [1,2,2,1,3,2], [1,2,2,2,3,1],
+        [1,1,3,2,2,2], [1,2,3,1,2,2], [1,2,3,2,2,1], [2,2,3,2,1,1], [2,2,1,1,3,2],
+        [2,2,1,2,3,1], [2,1,3,2,1,2], [2,2,3,1,1,2], [3,1,2,1,3,1], [3,1,1,2,2,2],
+        [3,2,1,1,2,2], [3,2,1,2,2,1], [3,1,2,2,1,2], [3,2,2,1,1,2], [3,2,2,2,1,1],
+        [2,1,2,1,2,3], [2,1,2,3,2,1], [2,3,2,1,2,1], [1,1,1,3,2,3], [1,3,1,1,2,3],
+        [1,3,1,3,2,1], [1,1,2,3,1,3], [1,3,2,1,1,3], [1,3,2,3,1,1], [2,1,1,3,1,3],
+        [2,3,1,1,1,3], [2,3,1,3,1,1], [1,1,2,1,3,3], [1,1,2,3,3,1], [1,3,2,1,3,1],
+        [1,1,3,1,2,3], [1,1,3,3,2,1], [1,3,3,1,2,1], [3,1,3,1,2,1], [2,1,1,3,3,1],
+        [2,3,1,1,3,1], [2,1,3,1,1,3], [2,1,3,3,1,1], [2,1,3,1,3,1], [3,1,1,1,2,3],
+        [3,1,1,3,2,1], [3,3,1,1,2,1], [3,1,2,1,1,3], [3,1,2,3,1,1], [3,3,2,1,1,1],
+        [3,1,4,1,1,1], [2,2,1,4,1,1], [4,3,1,1,1,1], [1,1,1,2,2,4], [1,1,1,4,2,2],
+        [1,2,1,1,2,4], [1,2,1,4,2,1], [1,4,1,1,2,2], [1,4,1,2,2,1], [1,1,2,2,1,4],
+        [1,1,2,4,1,2], [1,2,2,1,1,4], [1,2,2,4,1,1], [1,4,2,1,1,2], [1,4,2,2,1,1],
+        [2,4,1,2,1,1], [2,2,1,1,1,4], [4,1,3,1,1,1], [2,4,1,1,1,2], [1,3,4,1,1,1],
+        [1,1,1,2,4,2], [1,2,1,1,4,2], [1,2,1,2,4,1], [1,1,4,2,1,2], [1,2,4,1,1,2],
+        [1,2,4,2,1,1], [4,1,1,2,1,2], [4,2,1,1,1,2], [4,2,1,2,1,1], [2,1,2,1,4,1],
+        [2,1,4,1,2,1], [4,1,2,1,2,1], [1,1,1,1,4,3], [1,1,1,3,4,1], [1,3,1,1,4,1],
+        [1,1,4,1,1,3], [1,1,4,3,1,1], [4,1,1,1,1,3], [4,1,1,3,1,1], [1,1,3,1,4,1],
+        [1,1,4,1,3,1], [3,1,1,1,4,1], [4,1,1,1,3,1], [2,1,1,4,1,2], [2,1,1,2,1,4],
+        [2,1,1,2,3,2], [2,3,3,1,1,1,2] // Stop pattern
+    ];
+    
+    const START_B = 104; // Start Code B (for ASCII 32-127)
+    const STOP = 106;
+    
+    // Convert text to Code 128B values
+    const values: number[] = [START_B];
+    let checksum = START_B;
+    
+    for (let i = 0; i < text.length; i++) {
+        const charCode = text.charCodeAt(i);
+        // Code 128B: space (32) = 0, ! (33) = 1, ... ~ (126) = 94
+        const value = charCode >= 32 && charCode <= 126 ? charCode - 32 : 0;
+        values.push(value);
+        checksum += value * (i + 1);
+    }
+    
+    // Add checksum
+    values.push(checksum % 103);
+    values.push(STOP);
+    
+    // Generate SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
+    svg.style.display = 'block';
+    svg.style.background = 'white';
+    
+    // Calculate module width to fit the barcode
+    const totalModules = values.length * 11 + 2; // +2 for quiet zones
+    const moduleWidth = width / totalModules;
+    
+    let x = moduleWidth * 2; // Left quiet zone
+    
+    // Draw each encoded value
+    values.forEach(value => {
+        const pattern = CODE128[value];
+        for (let i = 0; i < pattern.length; i++) {
+            const elementWidth = pattern[i] * moduleWidth;
+            if (i % 2 === 0) { // Bars (even indices)
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', String(x));
+                rect.setAttribute('y', '2');
+                rect.setAttribute('width', String(elementWidth));
+                rect.setAttribute('height', String(height - 4));
+                rect.setAttribute('fill', '#000');
+                svg.appendChild(rect);
+            }
+            x += elementWidth;
+        }
+    });
+    
+    return svg;
+}
+
+export interface AssetModalCallbacks {
+    onSave: (item: InventoryItem, isNew: boolean) => Promise<void>;
+    onClose: () => void;
+}
+
+export function createAssetModal(
+    container: HTMLElement,
+    items: InventoryItem[],
+    settings: InventorySettings,
+    prefixCounters: PrefixCounters,
+    currentUserName: string
+) {
+    const modal = createEl('div', { class: 'ct-asset-modal' });
+    const modalBox = createEl('div', { class: 'box' });
+    modal.appendChild(modalBox);
+    container.appendChild(modal);
+
+    function closeModal() {
+        modal.classList.remove('open');
+        document.removeEventListener('keydown', onKeyDown);
+        setTimeout(() => {
+            if (!modal.classList.contains('open')) modal.style.display = 'none';
+        }, 220);
+    }
+
+    function onBackdropClick(e: MouseEvent) {
+        if (e.target === modal) closeModal();
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+        if (e.key === 'Escape') closeModal();
+    }
+
+    modal.addEventListener('click', onBackdropClick);
+
+    async function open(internalId?: string, callbacks?: AssetModalCallbacks) {
+        const existing = internalId ? items.find(i => i.id === internalId) : undefined;
+        modalBox.innerHTML = '';
+        
+        // Show modal
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => modal.classList.add('open'));
+        document.addEventListener('keydown', onKeyDown);
+        
+        // Close (X) button
+        const xBtn = createEl('button', { type: 'button', class: 'modal-close-btn', 'aria-label': 'Close' }, '✕');
+        xBtn.addEventListener('click', () => {
+            closeModal();
+            callbacks?.onClose();
+        });
+        modalBox.appendChild(xBtn);
+        
+        // Action buttons container
+        const headerActions = createEl('div', { class: 'asset-modal-actions' });
+        modalBox.appendChild(headerActions);
+        
+        // Header with icon and name
+        const header = createEl('div', { class: 'asset-modal-header' });
+        
+        // Icon upload
+        const iconContainer = createEl('div', { class: 'asset-icon-container' });
+        const iconPreview = createEl('div', { class: 'asset-icon-preview' });
+        
+        const storedIcon = existing?.assetIcon;
+        if (storedIcon) {
+            const img = createEl('img', { src: storedIcon, alt: 'Asset icon' }) as HTMLImageElement;
+            iconPreview.appendChild(img);
+        } else {
+            iconPreview.textContent = '📦';
+        }
+        
+        const iconInput = createEl('input', { type: 'file', accept: 'image/*', style: 'display:none', id: 'asset-icon-upload' }) as HTMLInputElement;
+        iconInput.addEventListener('change', (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const dataUrl = event.target?.result as string;
+                    iconPreview.innerHTML = '';
+                    const img = createEl('img', { src: dataUrl, alt: 'Asset icon' }) as HTMLImageElement;
+                    iconPreview.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        const iconLabel = createEl('label', { 'for': 'asset-icon-upload', class: 'asset-icon-label' }, 'Click to upload icon');
+        iconContainer.appendChild(iconPreview);
+        iconContainer.appendChild(iconInput);
+        iconContainer.appendChild(iconLabel);
+        
+        // Asset name
+        const headerInfo = createEl('div', { class: 'asset-header-info' });
+        const nameF = createEl('input', { 
+            value: existing?.name ?? '', 
+            placeholder: 'Asset Name',
+            class: 'asset-name-input'
+        }) as HTMLInputElement;
+        headerInfo.appendChild(nameF);
+        
+        // Asset ID
+        let autoGeneratedAssetId: string | undefined = existing?.assetId;
+        if (!existing && settings.assetPrefixes.length > 0) {
+            try {
+                autoGeneratedAssetId = await nextAssetId(settings.assetPrefixes[0], items, prefixCounters);
+            } catch (e) {
+                console.error('Failed to auto-generate asset ID', e);
+            }
+        }
+        
+        const assetIdLine = createEl('div', { class: 'asset-id-display', 'data-role': 'asset-id' }, `ID: ${autoGeneratedAssetId ?? '(none)'}`);
+        headerInfo.appendChild(assetIdLine);
+        
+        // Status badge
+        let currentStatus = existing?.status || 'Available';
+        const statusBadge = createEl('div', { class: 'asset-status-badge' }, currentStatus);
+        headerInfo.appendChild(statusBadge);
+        
+        header.appendChild(iconContainer);
+        header.appendChild(headerInfo);
+        modalBox.appendChild(header);
+        
+        // Barcode widget (below header, above tabs, centered, full-width)
+        const barcodeWidget = createEl('div', { 
+            style: 'margin:16px 0;padding:12px;background:#f5f5f5;border-radius:6px;border:2px solid transparent;min-height:40px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative'
+        });
+        
+        let currentBarcode = existing?.barcode ?? '';
+        let isEditingBarcode = false;
+        
+        const renderBarcodeWidget = () => {
+            barcodeWidget.innerHTML = '';
+            
+            if (isEditingBarcode) {
+                // Edit mode
+                const inputWrapper = createEl('div', { style: 'flex:1;position:relative' });
+                const input = createEl('input', {
+                    type: 'text',
+                    value: currentBarcode,
+                    placeholder: 'Scan or enter barcode...',
+                    style: 'width:100%;padding:6px 8px;border:1px solid #1976d2;border-radius:4px;font-family:monospace'
+                }) as HTMLInputElement;
+                
+                const validation = createEl('div', { 
+                    style: 'position:absolute;top:100%;left:0;margin-top:2px;font-size:11px;white-space:nowrap'
+                });
+                
+                const checkDuplicate = () => {
+                    const barcode = input.value.trim();
+                    if (!barcode) {
+                        validation.textContent = '';
+                        input.style.borderColor = '#1976d2';
+                        return true;
+                    }
+                    
+                    const duplicate = items.find(item => 
+                        item.barcode === barcode && item.id !== existing?.id
+                    );
+                    
+                    if (duplicate) {
+                        validation.textContent = `⚠️ Already used by: ${duplicate.name}`;
+                        validation.style.color = '#d32f2f';
+                        input.style.borderColor = '#d32f2f';
+                        return false;
+                    } else {
+                        validation.textContent = '✓ Available';
+                        validation.style.color = '#388e3c';
+                        input.style.borderColor = '#388e3c';
+                        return true;
+                    }
+                };
+                
+                input.addEventListener('input', checkDuplicate);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (checkDuplicate()) {
+                            currentBarcode = input.value.trim();
+                            isEditingBarcode = false;
+                            renderBarcodeWidget();
+                        }
+                    } else if (e.key === 'Escape') {
+                        isEditingBarcode = false;
+                        renderBarcodeWidget();
+                    }
+                });
+                
+                inputWrapper.appendChild(input);
+                inputWrapper.appendChild(validation);
+                barcodeWidget.appendChild(inputWrapper);
+                
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 50);
+                
+            } else {
+                // Display mode
+                if (currentBarcode) {
+                    // Barcode visual container with edit button overlay
+                    const barcodeContainer = createEl('div', {
+                        style: 'position:relative;display:flex;flex-direction:column;gap:4px;background:white;padding:8px;border-radius:4px;border:1px solid #e0e0e0'
+                    });
+                    
+                    // Generate barcode SVG
+                    const barcodeSvg = generateBarcodePattern(currentBarcode, 180, 40);
+                    barcodeContainer.appendChild(barcodeSvg);
+                    
+                    // Text below barcode
+                    const barcodeText = createEl('div', {
+                        style: 'font-family:monospace;font-size:11px;text-align:center;color:#666'
+                    }, currentBarcode);
+                    barcodeContainer.appendChild(barcodeText);
+                    
+                    // Edit button (appears on hover, positioned inside barcode)
+                    const editBtn = createEl('button', {
+                        type: 'button',
+                        style: 'position:absolute;top:4px;right:4px;padding:4px 8px;font-size:11px;background:rgba(255,255,255,0.95);border:1px solid #ddd;border-radius:4px;cursor:pointer;opacity:0;transition:opacity 0.2s;box-shadow:0 2px 4px rgba(0,0,0,0.1)'
+                    }, '✏️ Edit');
+                    editBtn.addEventListener('click', () => {
+                        isEditingBarcode = true;
+                        renderBarcodeWidget();
+                    });
+                    barcodeContainer.appendChild(editBtn);
+                    
+                    barcodeWidget.appendChild(barcodeContainer);
+                    
+                    barcodeWidget.addEventListener('mouseenter', () => {
+                        editBtn.style.opacity = '1';
+                    });
+                    barcodeWidget.addEventListener('mouseleave', () => {
+                        editBtn.style.opacity = '0';
+                    });
+                } else {
+                    // No barcode set
+                    const emptyMessage = createEl('div', {
+                        style: 'flex:1;color:#999;font-size:13px'
+                    }, 'No barcode set');
+                    barcodeWidget.appendChild(emptyMessage);
+                    
+                    const setBtn = createEl('button', {
+                        type: 'button',
+                        style: 'padding:6px 12px;background:#1976d2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px'
+                    }, '+ Set Barcode');
+                    setBtn.addEventListener('click', () => {
+                        isEditingBarcode = true;
+                        renderBarcodeWidget();
+                    });
+                    barcodeWidget.appendChild(setBtn);
+                }
+            }
+        };
+        
+        renderBarcodeWidget();
+        modalBox.appendChild(barcodeWidget);
+        
+        // Tabs
+        const tabSection = createEl('div', { class: 'asset-tabs' });
+        const overviewTab = createEl('div', { class: 'asset-tab active', 'data-tab': 'overview' }, '📋 Overview');
+        const historyTab = createEl('div', { class: 'asset-tab', 'data-tab': 'history' }, '📜 History');
+        tabSection.appendChild(overviewTab);
+        tabSection.appendChild(historyTab);
+        modalBox.appendChild(tabSection);
+        
+        // Content containers
+        const overviewContent = createEl('div', { class: 'tab-content active' });
+        const historyContent = createEl('div', { class: 'tab-content', style: 'display:none' });
+        
+        // Tab switching
+        const switchTab = (tabName: string) => {
+            if (tabName === 'overview') {
+                overviewTab.classList.add('active');
+                historyTab.classList.remove('active');
+                overviewContent.style.display = 'block';
+                historyContent.style.display = 'none';
+            } else {
+                overviewTab.classList.remove('active');
+                historyTab.classList.add('active');
+                overviewContent.style.display = 'none';
+                historyContent.style.display = 'block';
+            }
+        };
+        
+        overviewTab.addEventListener('click', () => switchTab('overview'));
+        historyTab.addEventListener('click', () => switchTab('history'));
+        
+        // Form
+        const form = createEl('form', { class: 'asset-form' }) as HTMLFormElement;
+        
+        // Initialize masterdata if needed
+        if (!settings.masterdata) {
+            settings.masterdata = {
+                manufacturers: [],
+                locations: [],
+                models: []
+            };
+        }
+        
+        // Masterdata searchers with create-on-the-fly
+        const manufacturerSearcher = createMasterdataSearcher(
+            'manufacturers',
+            settings.masterdata.manufacturers,
+            existing?.manufacturer,
+            async (name) => {
+                const newItem = {
+                    id: `manufacturer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                settings.masterdata!.manufacturers.push(newItem);
+                await saveSettings(settings);
+            }
+        );
+        
+        const modelSearcher = createMasterdataSearcher(
+            'models',
+            settings.masterdata.models,
+            existing?.model,
+            async (name) => {
+                const newItem = {
+                    id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                settings.masterdata!.models.push(newItem);
+                await saveSettings(settings);
+            }
+        );
+        
+        const locationSearcher = createMasterdataSearcher(
+            'locations',
+            settings.masterdata.locations,
+            existing?.location,
+            async (name) => {
+                const newItem = {
+                    id: `location-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                settings.masterdata!.locations.push(newItem);
+                await saveSettings(settings);
+            }
+        );
+        
+        const serialNumberF = createEl('input', { value: existing?.serialNumber ?? '' }) as HTMLInputElement;
+        const qtyF = createEl('input', { type: 'number', value: String(existing?.quantity ?? 1) }) as HTMLInputElement;
+        
+        // Auto-naming for new assets
+        let lastAutoGeneratedName = '';
+        let userHasEditedName = false;
+        
+        const updateAutoName = () => {
+            // Only auto-generate for new assets
+            if (existing) return;
+            
+            // Don't override if user has manually edited the name
+            if (userHasEditedName && nameF.value !== lastAutoGeneratedName) return;
+            
+            const manufacturer = manufacturerSearcher.getValue();
+            const model = modelSearcher.getValue();
+            const serialNumber = serialNumberF.value.trim();
+            
+            // Build auto-generated name
+            const parts: string[] = [];
+            if (manufacturer) parts.push(manufacturer);
+            if (model) parts.push(model);
+            if (serialNumber) parts.push(serialNumber);
+            
+            const autoName = parts.join(' ');
+            
+            // Only update if we have at least one component
+            if (autoName) {
+                nameF.value = autoName;
+                lastAutoGeneratedName = autoName;
+            }
+        };
+        
+        // Track if user manually edits the name field
+        nameF.addEventListener('input', () => {
+            if (nameF.value !== lastAutoGeneratedName) {
+                userHasEditedName = true;
+            }
+        });
+        
+        // Update auto-name when manufacturer, model, or serial number changes
+        if (!existing) {
+            manufacturerSearcher.input.addEventListener('input', updateAutoName);
+            modelSearcher.input.addEventListener('input', updateAutoName);
+            serialNumberF.addEventListener('input', updateAutoName);
+        }
+        
+        // Status buttons
+        const statusButtonsWrapper = createEl('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center' });
+        const statusDisplay = createEl('div', { style: 'padding:6px 12px;background:#e3f2fd;border-radius:4px;font-weight:500' }, currentStatus);
+        
+        const renderStatusButtons = () => {
+            statusButtonsWrapper.innerHTML = '';
+            statusDisplay.textContent = currentStatus;
+            statusBadge.textContent = currentStatus;
+            statusButtonsWrapper.appendChild(statusDisplay);
+            
+            if (existing) {
+                FIXED_STATUSES.forEach(status => {
+                    if (status !== currentStatus) {
+                        const btn = createEl('button', { type: 'button', style: 'padding:4px 8px;font-size:12px' }, status);
+                        btn.addEventListener('click', () => {
+                            currentStatus = status;
+                            renderStatusButtons();
+                        });
+                        statusButtonsWrapper.appendChild(btn);
+                    }
+                });
+            }
+        };
+        
+        renderStatusButtons();
+        
+        const personSearcher = createPersonSearcher(existing?.assignedToPersonId, existing?.assignedToPersonName);
+        const notesF = createEl('textarea', {}, existing?.notes ?? '') as HTMLTextAreaElement;
+        const tagsF = createEl('input', { value: (existing?.tags ?? []).join(', ') }) as HTMLInputElement;
+        
+        // Prefix dropdown for new assets
+        let prefixDropdown: ReturnType<typeof createSearchableDropdown> | null = null;
+        let tempAssetId: string | undefined = autoGeneratedAssetId;
+        
+        if (!existing) {
+            const defaultPrefix = settings.assetPrefixes.length > 0 ? settings.assetPrefixes[0] : '';
+            prefixDropdown = createSearchableDropdown(settings.assetPrefixes, defaultPrefix, 'Select or type prefix...');
+        }
+        
+        // Buttons
+        const saveBtn = createEl('button', { type: 'button', class: 'btn-primary' }, existing ? 'Save Changes' : 'Create Asset');
+        const cancelBtn = createEl('button', { type: 'button', class: 'btn-secondary' }, 'Cancel');
+        
+        headerActions.appendChild(cancelBtn);
+        headerActions.appendChild(saveBtn);
+        
+        cancelBtn.addEventListener('click', () => {
+        cancelBtn.addEventListener('click', () => {
+            closeModal();
+            callbacks?.onClose();
+        });
+        
+        // Build form
+        const addRow = (labelText: string, field: HTMLElement) => {
+            form.appendChild(createEl('label', {}, labelText));
+            form.appendChild(field);
+        };
+
+        addRow('Manufacturer', manufacturerSearcher.wrapper);
+        addRow('Model', modelSearcher.wrapper);
+        addRow('Serial Number', serialNumberF);
+        addRow('Quantity', qtyF);
+        addRow('Location', locationSearcher.wrapper);
+        addRow('Status', statusButtonsWrapper);
+        addRow('Assigned To', personSearcher.wrapper);
+        addRow('Notes', notesF);
+        addRow('Tags (comma separated)', tagsF);
+        
+        if (prefixDropdown) {
+            addRow('Asset ID prefix', prefixDropdown.wrapper);
+            
+            const regenBtn = createEl('button', { type: 'button', class: 'btn-regen' }, '🔄 Regenerate ID');
+            const regenRow = createEl('div', { style: 'grid-column: 2; margin-top: 8px' });
+            regenRow.appendChild(regenBtn);
+            form.appendChild(regenRow);
+            
+            regenBtn.addEventListener('click', async () => {
+                const prefix = prefixDropdown.getValue();
+                if (!prefix) return alert('Enter prefix to generate');
+                try {
+                    const newAssetId = await nextAssetId(prefix, items, prefixCounters);
+                    tempAssetId = newAssetId;
+                    assetIdLine.textContent = `ID: ${tempAssetId}`;
+                    alert('Generated ' + newAssetId);
+                } catch (e) {
+                    alert(String(e));
+                }
+            });
+        }
+        
+        // Audit info
+        if (existing?.createdBy && existing?.createdAt) {
+            const auditRow = createEl('div', { class: 'audit-info' });
+            auditRow.textContent = `Created by ${existing.createdBy} on ${new Date(existing.createdAt).toLocaleString()}`;
+            if (existing.updatedBy && existing.updatedAt) {
+                auditRow.textContent += ` • Last updated by ${existing.updatedBy} on ${new Date(existing.updatedAt).toLocaleString()}`;
+            }
+            form.appendChild(auditRow);
+        }
+
+        overviewContent.appendChild(form);
+        modalBox.appendChild(overviewContent);
+        
+        // History content
+        const historyList = createEl('div', { class: 'history-list' });
+        if (existing?.history && existing.history.length > 0) {
+            existing.history.forEach(entry => {
+                const historyItem = createEl('div', { class: 'history-item' });
+                
+                const historyHeader = createEl('div', { class: 'history-header' });
+                const timestamp = createEl('span', { class: 'history-timestamp' }, new Date(entry.timestamp).toLocaleString());
+                const user = createEl('span', { class: 'history-user' }, entry.user);
+                historyHeader.appendChild(timestamp);
+                historyHeader.appendChild(user);
+                
+                const action = createEl('div', { class: 'history-action' }, entry.action);
+                
+                historyItem.appendChild(historyHeader);
+                historyItem.appendChild(action);
+                
+                if (entry.changes && entry.changes.length > 0) {
+                    const changesList = createEl('ul', { class: 'history-changes' });
+                    entry.changes.forEach(change => {
+                        const changeItem = createEl('li', {});
+                        changeItem.textContent = `${change.field}: "${change.oldValue ?? 'none'}" → "${change.newValue ?? 'none'}"`;
+                        changesList.appendChild(changeItem);
+                    });
+                    historyItem.appendChild(changesList);
+                }
+                
+                historyList.appendChild(historyItem);
+            });
+        } else {
+            const emptyState = createEl('div', { class: 'history-empty' }, '📜 No history yet. Changes will be recorded here.');
+            historyList.appendChild(emptyState);
+        }
+        
+        historyContent.appendChild(historyList);
+        modalBox.appendChild(historyContent);
+
+        // Save logic
+        const processSave = async () => {
+            const now = fmtDate();
+            
+            // Validate barcode for duplicates
+            const barcode = currentBarcode.trim();
+            if (barcode) {
+                const duplicate = items.find(item => 
+                    item.barcode === barcode && item.id !== existing?.id
+                );
+                
+                if (duplicate) {
+                    alert(`Cannot save: Barcode "${barcode}" is already used by "${duplicate.name}". Please use a different barcode or remove it.`);
+                    isEditingBarcode = true;
+                    renderBarcodeWidget();
+                    return;
+                }
+            }
+            
+            const iconImg = iconPreview.querySelector('img') as HTMLImageElement;
+            const iconDataUrl = iconImg?.src || undefined;
+            
+            const assignedPersonId = personSearcher.getPersonId();
+            let finalStatus = currentStatus;
+            if (assignedPersonId && currentStatus === 'Available') {
+                finalStatus = 'Assigned to Person';
+            } else if (!assignedPersonId && currentStatus === 'Assigned to Person') {
+                finalStatus = 'Available';
+            }
+            
+            if (existing) {
+                const changes: { field: string; oldValue?: string; newValue?: string }[] = [];
+                
+                const newName = nameF.value.trim() || existing.name;
+                if (newName !== existing.name) changes.push({ field: 'Name', oldValue: existing.name, newValue: newName });
+                
+                const newManufacturer = manufacturerSearcher.getValue() || undefined;
+                if (newManufacturer !== existing.manufacturer) changes.push({ field: 'Manufacturer', oldValue: existing.manufacturer, newValue: newManufacturer });
+                
+                const newModel = modelSearcher.getValue() || undefined;
+                if (newModel !== existing.model) changes.push({ field: 'Model', oldValue: existing.model, newValue: newModel });
+                
+                const newSerialNumber = serialNumberF.value.trim() || undefined;
+                if (newSerialNumber !== existing.serialNumber) changes.push({ field: 'Serial Number', oldValue: existing.serialNumber, newValue: newSerialNumber });
+                
+                const newBarcode = currentBarcode.trim() || undefined;
+                if (newBarcode !== existing.barcode) changes.push({ field: 'Barcode', oldValue: existing.barcode, newValue: newBarcode });
+                
+                const newQuantity = Number(qtyF.value) || existing.quantity;
+                if (newQuantity !== existing.quantity) changes.push({ field: 'Quantity', oldValue: String(existing.quantity), newValue: String(newQuantity) });
+                
+                const newLocation = locationSearcher.getValue() || undefined;
+                if (newLocation !== existing.location) changes.push({ field: 'Location', oldValue: existing.location, newValue: newLocation });
+                
+                if (finalStatus !== existing.status) changes.push({ field: 'Status', oldValue: existing.status, newValue: finalStatus });
+                
+                const newAssignedName = personSearcher.getPersonName() || undefined;
+                if (newAssignedName !== existing.assignedToPersonName) changes.push({ field: 'Assigned To', oldValue: existing.assignedToPersonName, newValue: newAssignedName });
+                
+                const newNotes = notesF.value.trim() || undefined;
+                if (newNotes !== existing.notes) changes.push({ field: 'Notes', oldValue: existing.notes, newValue: newNotes });
+                
+                if (changes.length > 0) {
+                    if (!existing.history) existing.history = [];
+                    existing.history.unshift({
+                        timestamp: now,
+                        user: currentUserName,
+                        action: 'Updated asset',
+                        changes
+                    });
+                }
+                
+                existing.assetIcon = iconDataUrl;
+                existing.name = newName;
+                existing.manufacturer = newManufacturer;
+                existing.model = newModel;
+                existing.serialNumber = newSerialNumber;
+                existing.barcode = newBarcode;
+                existing.quantity = newQuantity;
+                existing.location = newLocation;
+                existing.status = finalStatus;
+                existing.assignedToPersonId = assignedPersonId;
+                existing.assignedToPersonName = newAssignedName;
+                existing.notes = newNotes;
+                existing.tags = tagsF.value.split(',').map(s => s.trim()).filter(Boolean) || undefined;
+                existing.updatedBy = currentUserName;
+                existing.updatedAt = now;
+                
+                await callbacks?.onSave(existing, false);
+            } else {
+                const newItem: InventoryItem = {
+                    id: genId(),
+                    assetId: tempAssetId,
+                    barcode: currentBarcode.trim() || undefined,
+                    assetIcon: iconDataUrl,
+                    name: nameF.value.trim() || 'New Asset',
+                    manufacturer: manufacturerSearcher.getValue() || undefined,
+                    model: modelSearcher.getValue() || undefined,
+                    serialNumber: serialNumberF.value.trim() || undefined,
+                    quantity: Number(qtyF.value) || 1,
+                    location: locationSearcher.getValue() || undefined,
+                    status: finalStatus,
+                    assignedToPersonId: assignedPersonId,
+                    assignedToPersonName: personSearcher.getPersonName() || undefined,
+                    notes: notesF.value.trim() || undefined,
+                    tags: tagsF.value.split(',').map(s => s.trim()).filter(Boolean) || undefined,
+                    createdBy: currentUserName,
+                    createdAt: now,
+                    updatedBy: currentUserName,
+                    updatedAt: now,
+                    history: [{
+                        timestamp: now,
+                        user: currentUserName,
+                        action: 'Created asset',
+                        changes: []
+                    }]
+                };
+                
+                await callbacks?.onSave(newItem, true);
+            }
+            
+            closeModal();
+        };
+
+        saveBtn.addEventListener('click', () => processSave());
+        form.addEventListener('submit', (ev) => {
+            ev.preventDefault();
+            processSave();
+        });
+    } // closes the open function
+
+    return { open, close: closeModal };
+} // closes createAssetModal

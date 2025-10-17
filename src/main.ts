@@ -40,7 +40,7 @@ app.innerHTML = `
 
 (document.querySelector('#ct-user') as HTMLDivElement).textContent = `Signed in as ${[user.firstName, user.lastName].join(' ')}`;
 
-initInventory(document.querySelector('#ct-inventory') as HTMLDivElement, {
+await initInventory(document.querySelector('#ct-inventory') as HTMLDivElement, {
         // example syncHandler: send to ChurchTools custom module endpoint (if available)
         syncHandler: async (items) => {
                 // This is a placeholder. You can POST/PUT to your module endpoint here.
