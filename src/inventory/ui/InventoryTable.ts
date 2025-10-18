@@ -34,7 +34,6 @@ export function createInventoryTable(container: HTMLElement) {
         { label: 'Model', key: 'model', filterable: true },
         { label: 'Serial Number', key: null, filterable: false },
         { label: 'Barcode', key: null, filterable: false },
-        { label: 'Quantity', key: null, filterable: false },
         { label: 'Location', key: 'location', filterable: true },
         { label: 'Status', key: 'status', filterable: true },
         { label: 'Assigned To', key: 'assignedTo', filterable: true },
@@ -402,7 +401,6 @@ export function createInventoryTable(container: HTMLElement) {
             tr.appendChild(td(it.model ?? ''));
             tr.appendChild(td(it.serialNumber ?? ''));
             tr.appendChild(td(it.barcode ?? ''));
-            tr.appendChild(td(String(it.quantity)));
             tr.appendChild(td(it.location ?? ''));
             tr.appendChild(td(it.status ?? ''));
             

@@ -5,6 +5,7 @@ import { createBarcodeWidget } from './BarcodeWidget';
 import { createIconUpload } from './IconUpload';
 import { createAssetForm } from './AssetForm';
 import { createHistorySection } from './HistorySection';
+import { nextAssetId } from '../services/assetId.service';
 
 export interface AssetModalCallbacks {
     onSave: (item: InventoryItem, isNew: boolean) => Promise<void>;
@@ -57,6 +58,30 @@ export function createAssetModal(
         const saveBtn = createEl('button', { type: 'button', class: 'btn-primary' }, existing ? 'Save Changes' : 'Create Asset');
         const cancelBtn = createEl('button', { type: 'button', class: 'btn-secondary' }, 'Cancel');
         headerActions.appendChild(cancelBtn);
+        
+        // Add "Create Instance" button for existing items (to create child copies)
+        if (existing) {
+            const createInstanceBtn = createEl('button', { 
+                type: 'button', 
+                class: 'btn-secondary',
+                style: 'background:#2196f3;color:white;border-color:#2196f3'
+            }, '📦 Create Instance');
+            headerActions.appendChild(createInstanceBtn);
+            
+            createInstanceBtn.addEventListener('click', () => {
+                const count = prompt('How many instances of this asset do you want to create?\n\nEach will be a copy with unique Asset ID, Barcode, Serial Number, Status, Assigned To, and Notes.\n\nShared properties (Name, Manufacturer, Model, Icon) will be inherited from this parent.', '1');
+                if (!count) return;
+                
+                const numItems = parseInt(count);
+                if (isNaN(numItems) || numItems < 1 || numItems > 1000) {
+                    alert('Please enter a number between 1 and 1000');
+                    return;
+                }
+                
+                processCreateInstances(numItems);
+            });
+        }
+        
         headerActions.appendChild(saveBtn);
         modalBox.appendChild(headerActions);
 
@@ -69,6 +94,34 @@ export function createAssetModal(
         const header = createEl('div', { class: 'asset-modal-header' });
         const iconUpload = createIconUpload(existing?.assetIcon);
         const headerInfo = createEl('div', { class: 'asset-header-info' });
+        
+        // Show parent asset link if this is an instance
+        if (existing?.parentAssetId) {
+            const parentAsset = items.find(i => i.id === existing.parentAssetId);
+            if (parentAsset) {
+                const parentLink = createEl('div', { 
+                    class: 'parent-asset-link',
+                    style: 'font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:4px'
+                });
+                parentLink.innerHTML = `<span style="color:#2196f3">🔗 Instance of:</span> <strong style="color:#2196f3">${parentAsset.name}</strong> <span style="color:#999">(ID: ${parentAsset.assetId || parentAsset.id.substring(0, 8)})</span>`;
+                parentLink.addEventListener('click', () => {
+                    closeModal();
+                    // Re-open modal with parent asset
+                    setTimeout(() => open(parentAsset.id, callbacks), 100);
+                });
+                headerInfo.appendChild(parentLink);
+            }
+        }
+        
+        // Show instance count if this asset has children
+        const childCount = items.filter(i => i.parentAssetId === existing?.id).length;
+        if (childCount > 0) {
+            const instanceBadge = createEl('div', {
+                style: 'font-size:12px;background:#e3f2fd;color:#1976d2;padding:4px 8px;border-radius:12px;display:inline-block;margin-bottom:4px;font-weight:600'
+            }, `📦 ${childCount} instance${childCount !== 1 ? 's' : ''}`);
+            headerInfo.appendChild(instanceBadge);
+        }
+        
         const nameInput = createEl('input', {
             type: 'text',
             class: 'asset-name-input',
@@ -95,27 +148,100 @@ export function createAssetModal(
         const overviewTab = createEl('div', { class: 'asset-tab active' }, '📋 Overview');
         const historyTab = createEl('div', { class: 'asset-tab' }, '📜 History');
         tabSection.appendChild(overviewTab);
+        
+        // Add Instances tab if this asset has children
+        let instancesTab: HTMLElement | null = null;
+        if (existing && childCount > 0) {
+            instancesTab = createEl('div', { class: 'asset-tab' }, `📦 Instances (${childCount})`);
+            tabSection.appendChild(instancesTab);
+        }
+        
         tabSection.appendChild(historyTab);
         modalBox.appendChild(tabSection);
 
         // Tab content
         const overviewContent = createEl('div', { class: 'tab-content active' });
         const historyContent = createHistorySection(existing);
+        
+        // Instances tab content
+        let instancesContent: HTMLElement | null = null;
+        if (existing && childCount > 0) {
+            instancesContent = createEl('div', { class: 'tab-content', style: 'display:none' });
+            const childAssets = items.filter(i => i.parentAssetId === existing.id);
+            
+            const instancesTitle = createEl('h3', { style: 'margin-bottom:16px' }, 'Child Instances');
+            instancesContent.appendChild(instancesTitle);
+            
+            const instancesTable = createEl('table', { 
+                style: 'width:100%;border-collapse:collapse',
+                border: '1'
+            });
+            const thead = createEl('thead');
+            const headerRow = createEl('tr');
+            ['Asset ID', 'Barcode', 'Serial Number', 'Status', 'Assigned To', 'Notes', 'Actions'].forEach(label => {
+                const th = createEl('th', { style: 'padding:8px;text-align:left;background:#f5f5f5' }, label);
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            instancesTable.appendChild(thead);
+            
+            const tbody = createEl('tbody');
+            childAssets.forEach(child => {
+                const row = createEl('tr', { style: 'cursor:pointer' });
+                const td = (text: string) => createEl('td', { style: 'padding:8px;border-top:1px solid #eee' }, text);
+                
+                row.appendChild(td(child.assetId || '-'));
+                row.appendChild(td(child.barcode || '-'));
+                row.appendChild(td(child.serialNumber || '-'));
+                row.appendChild(td(child.status || '-'));
+                row.appendChild(td(child.assignedToPersonName || '-'));
+                row.appendChild(td(child.notes || '-'));
+                
+                const actionsCell = createEl('td', { style: 'padding:8px;border-top:1px solid #eee' });
+                const openBtn = createEl('button', { 
+                    type: 'button',
+                    style: 'padding:4px 8px;font-size:12px'
+                }, 'Open');
+                openBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeModal();
+                    setTimeout(() => open(child.id, callbacks), 100);
+                });
+                actionsCell.appendChild(openBtn);
+                row.appendChild(actionsCell);
+                
+                row.addEventListener('click', () => {
+                    closeModal();
+                    setTimeout(() => open(child.id, callbacks), 100);
+                });
+                
+                tbody.appendChild(row);
+            });
+            instancesTable.appendChild(tbody);
+            instancesContent.appendChild(instancesTable);
+        }
 
         // Tab switching
-        overviewTab.addEventListener('click', () => {
-            overviewTab.classList.add('active');
-            historyTab.classList.remove('active');
-            overviewContent.style.display = 'block';
-            historyContent.style.display = 'none';
-        });
-
-        historyTab.addEventListener('click', () => {
-            overviewTab.classList.remove('active');
-            historyTab.classList.add('active');
-            overviewContent.style.display = 'none';
-            historyContent.style.display = 'block';
-        });
+        const tabs = [overviewTab, historyTab, instancesTab].filter(Boolean) as HTMLElement[];
+        const tabContents = [overviewContent, historyContent, instancesContent].filter(Boolean) as HTMLElement[];
+        
+        const switchToTab = (index: number) => {
+            tabs.forEach((tab, i) => {
+                if (i === index) {
+                    tab.classList.add('active');
+                    tabContents[i].style.display = 'block';
+                } else {
+                    tab.classList.remove('active');
+                    tabContents[i].style.display = 'none';
+                }
+            });
+        };
+        
+        overviewTab.addEventListener('click', () => switchToTab(0));
+        historyTab.addEventListener('click', () => switchToTab(instancesTab ? 2 : 1));
+        if (instancesTab) {
+            instancesTab.addEventListener('click', () => switchToTab(1));
+        }
 
         // Create form
         const formFields = createAssetForm(
@@ -131,7 +257,72 @@ export function createAssetModal(
 
         overviewContent.appendChild(formFields.form);
         modalBox.appendChild(overviewContent);
+        if (instancesContent) modalBox.appendChild(instancesContent);
         modalBox.appendChild(historyContent);
+
+        // Create instances logic - creates child copies of the current asset
+        async function processCreateInstances(count: number) {
+            if (!existing) {
+                alert('Cannot create instances without a parent asset');
+                return;
+            }
+            
+            const now = fmtDate();
+            const createdItems: InventoryItem[] = [];
+            
+            for (let i = 0; i < count; i++) {
+                // Generate unique ID and assetId for each instance
+                const itemId = genId();
+                const selectedPrefix = existing.assetId?.match(/^([A-Z]+)/)?.[1] || '';
+                const assetId = selectedPrefix ? await nextAssetId(selectedPrefix, items, prefixCounters) : undefined;
+                
+                const newInstance: InventoryItem = {
+                    id: itemId,
+                    assetId,
+                    barcode: undefined, // Each instance needs unique barcode
+                    
+                    // Link to parent
+                    parentAssetId: existing.id,
+                    
+                    // Inherited properties from parent (shared)
+                    name: existing.name,
+                    manufacturer: existing.manufacturer,
+                    model: existing.model,
+                    assetIcon: existing.assetIcon,
+                    location: existing.location, // Can be overridden per instance
+                    tags: existing.tags,
+                    
+                    // Instance-specific properties (unique per item)
+                    serialNumber: undefined,
+                    status: undefined, // Each instance can have different status
+                    assignedToPersonId: undefined,
+                    assignedToPersonName: undefined,
+                    notes: undefined,
+                    
+                    // Metadata
+                    createdBy: currentUserName,
+                    createdAt: now,
+                    updatedBy: currentUserName,
+                    updatedAt: now,
+                    history: [{
+                        timestamp: now,
+                        user: currentUserName,
+                        action: `Created as instance of "${existing.name}" (${i + 1}/${count})`,
+                        changes: []
+                    }]
+                };
+                
+                createdItems.push(newInstance);
+            }
+            
+            // Save all instances
+            for (const item of createdItems) {
+                await callbacks?.onSave(item, true);
+            }
+            
+            alert(`Successfully created ${count} instance${count !== 1 ? 's' : ''}!\n\nEach instance:\n• Is linked to the parent asset "${existing.name}"\n• Has a unique Asset ID\n• Needs its own barcode, serial number, status, etc.`);
+            closeModal();
+        }
 
         // Save logic
         async function processSave() {
@@ -179,9 +370,6 @@ export function createAssetModal(
                 const newBarcode = barcode || undefined;
                 if (newBarcode !== existing.barcode) changes.push({ field: 'Barcode', oldValue: existing.barcode, newValue: newBarcode });
 
-                const newQuantity = Number(formFields.quantityField.value) || existing.quantity;
-                if (newQuantity !== existing.quantity) changes.push({ field: 'Quantity', oldValue: String(existing.quantity), newValue: String(newQuantity) });
-
                 const newLocation = formFields.locationSearcher.getValue() || undefined;
                 if (newLocation !== existing.location) changes.push({ field: 'Location', oldValue: existing.location, newValue: newLocation });
 
@@ -200,7 +388,6 @@ export function createAssetModal(
                     existing.manufacturer = newManufacturer;
                     existing.model = newModel;
                     existing.serialNumber = newSerialNumber;
-                    existing.quantity = newQuantity;
                     existing.location = newLocation;
                     existing.status = finalStatus;
                     existing.assignedToPersonId = assignedPersonId;
@@ -231,7 +418,6 @@ export function createAssetModal(
                     manufacturer: formFields.manufacturerSearcher.getValue() || undefined,
                     model: formFields.modelSearcher.getValue() || undefined,
                     serialNumber: formFields.serialNumberField.value.trim() || undefined,
-                    quantity: Number(formFields.quantityField.value) || 1,
                     location: formFields.locationSearcher.getValue() || undefined,
                     status: finalStatus,
                     assignedToPersonId: assignedPersonId,

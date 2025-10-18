@@ -2,6 +2,7 @@
  * Core type definitions for the inventory system
  */
 
+// Individual Asset Instance - each has unique identifying information
 export type InventoryItem = {
     // internal stable id (never changes)
     id: string;
@@ -9,18 +10,27 @@ export type InventoryItem = {
     assetId?: string;
     // barcode/QR code - independent from assetId
     barcode?: string;
-    assetIcon?: string; // Data URL for asset icon image
+    
+    // Parent-child relationship for asset instances
+    // If this is set, this item is an instance/copy of another asset
+    parentAssetId?: string;
+    
+    // Shared properties (inherited from parent if parentAssetId is set)
     name: string;
     manufacturer?: string;
     model?: string;
-    serialNumber?: string;
-    quantity: number;
+    assetIcon?: string; // Data URL for asset icon image
     location?: string;
+    tags?: string[];
+    
+    // Instance-specific properties (always unique per item, never inherited)
+    serialNumber?: string;
     status?: string;
     assignedToPersonId?: number;
     assignedToPersonName?: string;
     notes?: string;
-    tags?: string[];
+    
+    // Metadata
     createdBy?: string;
     createdAt?: string;
     updatedBy?: string;

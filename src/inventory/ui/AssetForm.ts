@@ -15,7 +15,6 @@ export interface AssetFormFields {
     statusSelector: ReturnType<typeof createStatusSelector>;
     nameField: HTMLInputElement;
     serialNumberField: HTMLInputElement;
-    quantityField: HTMLInputElement;
     notesField: HTMLTextAreaElement;
     tagsField: HTMLInputElement;
     prefixDropdown?: ReturnType<typeof createSearchableDropdown>;
@@ -109,12 +108,6 @@ export function createAssetForm(
         placeholder: 'e.g., SN123456' 
     }) as HTMLInputElement;
     
-    const quantityField = createEl('input', { 
-        type: 'number', 
-        value: String(existing?.quantity || 1), 
-        min: '1' 
-    }) as HTMLInputElement;
-    
     const notesField = createEl('textarea', { 
         rows: '3', 
         placeholder: 'Additional notes...' 
@@ -137,7 +130,6 @@ export function createAssetForm(
     addRow('Manufacturer', manufacturerSearcher.wrapper);
     addRow('Model', modelSearcher.wrapper);
     addRow('Serial Number', serialNumberField);
-    addRow('Quantity', quantityField);
     addRow('Location', locationSearcher.wrapper);
     addRow('Status', statusSelector.element);
     addRow('Assigned To', personSearcher.wrapper);
@@ -196,7 +188,6 @@ export function createAssetForm(
         statusSelector,
         nameField,
         serialNumberField,
-        quantityField,
         notesField,
         tagsField,
         prefixDropdown,

@@ -29,7 +29,8 @@ export function createKitsSection(container: HTMLElement) {
     function updateItemsSelect(items: InventoryItem[]) {
         kitItemsSelect.innerHTML = '';
         for (const it of items) {
-            const opt = createEl('option', { value: it.id }, `${it.name} (${it.quantity})`);
+            const displayName = it.assetId ? `${it.name} (ID: ${it.assetId})` : it.name;
+            const opt = createEl('option', { value: it.id }, displayName);
             kitItemsSelect.appendChild(opt);
         }
     }
