@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { theme } from './theme';
+import { validateEnvironment } from './utils/envValidation';
 import App from './App';
 
 // Import Mantine styles
@@ -18,6 +19,23 @@ import 'mantine-datatable/styles.css';
 // Only import reset.css in development mode to keep the production bundle small
 if (import.meta.env.MODE === 'development') {
     void import('./utils/reset.css');
+}
+
+// Validate environment variables before app initialization
+try {
+  validateEnvironment();
+} catch (error) {
+  // Show error in console and on page
+  console.error('[Config Error]', error);
+  document.body.innerHTML = `
+    <div style="font-family: system-ui, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+      <h1 style="color: #c92a2a;">Configuration Error</h1>
+      <pre style="background: #f1f3f5; padding: 15px; border-radius: 4px; overflow-x: auto;">${
+        error instanceof Error ? error.message : String(error)
+      }</pre>
+    </div>
+  `;
+  throw error;
 }
 
 declare const window: Window &

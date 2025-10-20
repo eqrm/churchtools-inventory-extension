@@ -92,7 +92,96 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 - [x] T040 All environment variables documented in .env.example
 - [x] T041 Bundle size baseline measured (Phase 1 complete: 138.50 KB with all dependencies; will decrease after Phase 2 tree shaking)
 
-**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+**Checkpoint**: Foundation ready - testing infrastructure setup can now begin
+
+---
+
+## Phase 2.5: Automated Testing Infrastructure Setup (Priority: P0) 🧪
+
+**Purpose**: Set up comprehensive automated testing infrastructure before user story implementation
+
+**⚠️ CRITICAL**: This phase MUST be complete before Phase 3 to ensure all business logic can be automatically tested
+
+**Testing Strategy**: Automated tests for ALL business logic (services, hooks, utilities, custom fields, bookings, kits, etc.). Manual testing ONLY for UI/UX (visual design, responsiveness, accessibility).
+
+**Environment Isolation**: Automatic prefix based on context:
+- Tests (Vitest): `test-inventory-management` (destructive tests allowed, automatically used when running `npm test`)
+- Development (VITE_ENVIRONMENT=development): `dev-inventory-management` (manual testing)
+- Production (VITE_ENVIRONMENT=production): `prod-inventory-management` (real user data)
+
+**Test Users**: Use IDs [4618, 6465, 11672, 6462] for person assignments and email testing
+
+### Testing Framework Installation
+
+- [x] T041a Install Vitest v1.0+ and @vitest/ui for test runner (compatible with Vite)
+- [x] T041b [P] Install React Testing Library dependencies (@testing-library/react v14+, @testing-library/user-event v14+, @testing-library/jest-dom v6+)
+- [x] T041c [P] Install MSW (Mock Service Worker) v2+ for API mocking
+- [x] T041d [P] Install @vitest/coverage-v8 for code coverage reports
+
+### Test Configuration
+
+- [x] T041e Create vitest.config.ts extending vite.config.ts with:
+  - Test environment: jsdom
+  - Coverage thresholds: 90% services/hooks/utils, 80% components, 70% integration
+  - Test file patterns: `**/__tests__/**/*.{test,spec}.{ts,tsx}`
+  - Setup file: `src/tests/setup.ts`
+  - Reporters: default, html, json
+- [x] T041f Create src/tests/setup.ts with @testing-library/jest-dom imports and global test setup
+
+### Test Utilities and Helpers
+
+- [x] T041g Create src/tests/utils/custom-render.tsx with custom render function (wraps components in providers: TanStack Query, Mantine, Zustand)
+- [x] T041h Create src/tests/utils/test-data-factory.ts with factory functions for test entities (categories, assets, custom fields, bookings, kits)
+- [x] T041i Create src/tests/mocks/handlers.ts with MSW request handlers for ChurchTools API endpoints
+- [x] T041j Create src/tests/mocks/server.ts with MSW server setup (Node.js environment for tests)
+- [x] T041k [P] Create src/tests/utils/reset-test-data.ts helper for destructive tests (only works with test prefix, resets custom module data and categories, throws error if not in test mode)
+
+### Environment Configuration
+
+- [x] T041l Add VITE_ENVIRONMENT variable to .env.example (values: 'development' or 'production', default: 'development')
+- [x] T041m Update src/hooks/useStorageProvider.ts to automatically use prefix based on context:
+  - In test mode (import.meta.env.VITEST === true): prefix = 'test'
+  - VITE_ENVIRONMENT === 'development': prefix = 'dev'
+  - VITE_ENVIRONMENT === 'production': prefix = 'prod'
+  - Module key constructed as: `${prefix}${import.meta.env.VITE_KEY}` (no hyphens due to ChurchTools limitation)
+- [x] T041n Create src/tests/config/test-users.ts with test user IDs constant: `export const TEST_USER_IDS = [4618, 6465, 11672, 6462]` (use for person assignments, email testing)
+
+### Test Directory Structure
+
+- [x] T041p Create test directory structure:
+  - `src/services/__tests__/` (service layer tests)
+  - `src/hooks/__tests__/` (TanStack Query hook tests)
+  - `src/utils/__tests__/` (utility function tests)
+  - `src/components/__tests__/` (component logic tests)
+  - `src/tests/integration/` (end-to-end workflow tests)
+
+### CI/CD Integration
+
+- [ ] T041q Create .github/workflows/test.yml with:
+  - Run on: push to main, pull requests
+  - Steps: Install dependencies, Run Vitest with coverage, Upload coverage to Codecov (optional)
+  - Environment: Use .env.test with test- prefix module
+  - Node version: 20.x
+
+### Testing Documentation
+
+- [x] T041r Create docs/TESTING.md with:
+  - Testing strategy overview (automated vs manual)
+  - Running tests locally (`npm test`, `npm run test:ui`, `npm run test:coverage`)
+  - Writing tests (examples for services, hooks, components, integration)
+  - Automatic environment isolation (test mode always uses test prefix)
+  - Test user IDs for person assignments and emails [4618, 6465, 11672, 6462]
+  - Coverage requirements per layer
+  - How to switch between dev and prod environments (VITE_ENVIRONMENT variable)
+
+### Validation
+
+- [x] T041s Run `npm test` to verify all tests pass and automatically use testfkoinventorymanagement module
+- [x] T041t Run `npm run test:ui` to verify Vitest UI opens correctly
+- [x] T041u Run `npm run test:coverage` to verify coverage reporting works
+- [x] T041v Verify useStorageProvider correctly switches prefixes: test mode (test), dev environment (dev), prod environment (prod)
+
+**Checkpoint**: Testing infrastructure ready - automated tests can be written during user story implementation
 
 ---
 
@@ -150,21 +239,21 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 
 ### Advanced Custom Field Features for User Story 2
 
-- [ ] T064 [P] [US2] Create custom field validation logic in src/utils/validation.ts (validateCustomFieldValue based on field type and validation rules)
-- [ ] T065 [P] [US2] Add person-reference field type support in CustomFieldInput (ChurchTools person picker)
-- [ ] T066 [P] [US2] Add URL field type validation in CustomFieldInput (URL validation)
-- [ ] T067 [P] [US2] Add multi-select field type support in CustomFieldInput (Mantine MultiSelect)
-- [ ] T068 [P] [US2] Create custom field preview in AssetCategoryForm (show how fields will look)
-- [ ] T069 [US2] Implement required field validation in AssetForm (prevent submission if required custom fields empty)
-- [ ] T070 [US2] Add custom field filtering in AssetList (filter by custom field values)
+- [x] T064 [P] [US2] Create custom field validation logic in src/utils/validation.ts (validateCustomFieldValue based on field type and validation rules)
+- [x] T065 [P] [US2] Add person-reference field type support in CustomFieldInput (ChurchTools person picker)
+- [x] T066 [P] [US2] Add URL field type validation in CustomFieldInput (URL validation)
+- [x] T067 [P] [US2] Add multi-select field type support in CustomFieldInput (Mantine MultiSelect)
+- [x] T068 [P] [US2] Create custom field preview in AssetCategoryForm (show how fields will look)
+- [x] T069 [US2] Implement required field validation in AssetForm (prevent submission if required custom fields empty)
+- [x] T070 [US2] Add custom field filtering in AssetList (filter by custom field values)
 - [ ] T071 [US2] Add custom field sorting in AssetList (sort by custom field values)
 
 ### Category Management Enhancements for User Story 2
 
-- [ ] T072 [P] [US2] Add category icon picker in AssetCategoryForm (Tabler icons via Mantine)
-- [ ] T073 [P] [US2] Create category templates feature in src/components/categories/CategoryTemplates.tsx (pre-defined category configurations)
-- [ ] T074 [US2] Add category validation (prevent deletion if assets exist)
-- [ ] T075 [US2] Add category duplication feature (copy category with all custom fields)
+- [x] T072 [P] [US2] Add category icon picker in AssetCategoryForm (Tabler icons via Mantine)
+- [x] T073 [P] [US2] Create category templates feature in src/components/categories/CategoryTemplates.tsx (pre-defined category configurations)
+- [x] T074 [US2] Add category validation (prevent deletion if assets exist)
+- [x] T075 [US2] Add category duplication feature (copy category with all custom fields)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 are complete - users have full custom field support with all field types, validation, filtering, and sorting.
 
@@ -178,28 +267,28 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 
 ### Barcode/QR Generation for User Story 3
 
-- [ ] T076 [P] [US3] Create BarcodeService in src/services/barcode/BarcodeService.ts (generateBarcode using JsBarcode, generateQRCode using qrcode)
-- [ ] T077 [P] [US3] Create BarcodeDisplay component in src/components/scanner/BarcodeDisplay.tsx (display barcode image)
-- [ ] T078 [P] [US3] Create QRCodeDisplay component in src/components/scanner/QRCodeDisplay.tsx (display QR code image)
-- [ ] T079 [P] [US3] Add barcode/QR display to AssetDetail component
-- [ ] T080 [P] [US3] Create AssetLabelPrint component in src/components/assets/AssetLabelPrint.tsx (printable asset labels with barcode/QR)
+- [x] T076 [P] [US3] Create BarcodeService in src/services/barcode/BarcodeService.ts (generateBarcode using JsBarcode, generateQRCode using qrcode)
+- [x] T077 [P] [US3] Create BarcodeDisplay component in src/components/scanner/BarcodeDisplay.tsx (display barcode image)
+- [x] T078 [P] [US3] Create QRCodeDisplay component in src/components/scanner/QRCodeDisplay.tsx (display QR code image)
+- [x] T079 [P] [US3] Add barcode/QR display to AssetDetail component
+- [x] T080 [P] [US3] Create AssetLabelPrint component in src/components/assets/AssetLabelPrint.tsx (printable asset labels with barcode/QR)
 
 ### Barcode/QR Scanning for User Story 3
 
-- [ ] T081 [P] [US3] Create BarcodeScanner component in src/components/scanner/BarcodeScanner.tsx (handles USB/Bluetooth keyboard emulation + camera scanning)
-- [ ] T082 [P] [US3] Add camera scanning support in BarcodeScanner (html5-qrcode integration)
-- [ ] T083 [P] [US3] Create ScannerInput component in src/components/scanner/ScannerInput.tsx (manual entry fallback)
-- [ ] T084 [P] [US3] Add scan success feedback (visual + audio confirmation)
-- [ ] T085 [US3] Implement asset lookup by number in ChurchToolsStorageProvider (optimize for fast lookup)
-- [ ] T086 [US3] Create scanner navigation logic (scan asset number → navigate to AssetDetail)
-- [ ] T087 [US3] Add scanner keyboard shortcuts (Alt+S to focus scanner input)
+- [x] T081 [P] [US3] Create BarcodeScanner component in src/components/scanner/BarcodeScanner.tsx (handles USB/Bluetooth keyboard emulation + camera scanning)
+- [x] T082 [P] [US3] Add camera scanning support in BarcodeScanner (html5-qrcode integration)
+- [x] T083 [P] [US3] Create ScannerInput component in src/components/scanner/ScannerInput.tsx (manual entry fallback)
+- [x] T084 [P] [US3] Add scan success feedback (visual + audio confirmation)
+- [x] T085 [US3] Implement asset lookup by number in ChurchToolsStorageProvider (optimize for fast lookup)
+- [x] T086 [US3] Create scanner navigation logic (scan asset number → navigate to AssetDetail)
+- [x] T087 [US3] Add scanner keyboard shortcuts (Alt+S to focus scanner input)
 
 ### Scanner UI for User Story 3
 
-- [ ] T088 [P] [US3] Create QuickScan modal in src/components/scanner/QuickScanModal.tsx (overlay for quick asset lookup)
-- [ ] T089 [US3] Integrate QuickScan modal with global keyboard shortcut
-- [ ] T090 [US3] Add recent scans history to scanner store
-- [ ] T091 [US3] Create scanner settings (enable/disable camera, audio feedback, etc.)
+- [x] T088 [P] [US3] Create QuickScan modal in src/components/scanner/QuickScanModal.tsx (overlay for quick asset lookup)
+- [x] T089 [US3] Integrate QuickScan modal with global keyboard shortcut
+- [x] T090 [US3] Add recent scans history to scanner store
+- [x] T091 [US3] Create scanner settings (enable/disable camera, audio feedback, etc.)
 
 **Checkpoint**: At this point, User Stories 1, 2, and 3 are complete - users can scan barcodes/QR codes to quickly locate assets.
 
@@ -281,6 +370,7 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 - [ ] T126 [US5] Add "Book This Asset" button to AssetDetail
 - [ ] T127 [US5] Integrate booking calendar with asset filtering (view bookings by category, location)
 - [ ] T128 [US5] Add booking notifications (Mantine notifications for check-out/check-in success)
+- [ ] T128a [US5] Implement equipment return reminder emails via ChurchTools email service (reuse T185 email service integration)
 
 **Checkpoint**: At this point, User Stories 1-5 are complete - users can book assets, prevent conflicts, check out/in equipment with condition tracking.
 
@@ -334,27 +424,27 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 
 ### Stock Take Data Layer for User Story 7
 
-- [ ] T147 [P] [US7] Create TanStack Query hooks in src/hooks/useStockTake.ts (useStockTakeSessions, useStockTakeSession, useCreateStockTakeSession, useAddStockTakeScan, useCompleteStockTakeSession)
-- [ ] T148 [US7] Implement stock take CRUD in ChurchToolsStorageProvider (getStockTakeSessions, createStockTakeSession, addStockTakeScan, completeStockTakeSession)
+- [x] T147 [P] [US7] Create TanStack Query hooks in src/hooks/useStockTake.ts (useStockTakeSessions, useStockTakeSession, useCreateStockTakeSession, useAddStockTakeScan, useCompleteStockTakeSession)
+- [x] T148 [US7] Implement stock take CRUD in ChurchToolsStorageProvider (getStockTakeSessions, createStockTakeSession, addStockTakeScan, completeStockTakeSession)
 - [ ] T149 [US7] Implement offline stock take in OfflineStorageProvider (sync to Dexie.js)
 - [ ] T150 [US7] Implement sync queue for offline scans (automatic sync when online)
 
 ### Stock Take UI Components for User Story 7
 
-- [ ] T151 [P] [US7] Create StockTakeSessionList component in src/components/stocktake/StockTakeSessionList.tsx (active and completed sessions)
-- [ ] T152 [P] [US7] Create StartStockTakeForm component in src/components/stocktake/StartStockTakeForm.tsx (define scope: category/location/all)
-- [ ] T153 [P] [US7] Create StockTakeScanner component in src/components/stocktake/StockTakeScanner.tsx (full-screen scanning interface)
-- [ ] T154 [P] [US7] Create StockTakeScanList component in src/components/stocktake/StockTakeScanList.tsx (real-time list of scanned assets)
-- [ ] T155 [P] [US7] Create StockTakeProgress component in src/components/stocktake/StockTakeProgress.tsx (progress bar: scanned / total)
-- [ ] T156 [P] [US7] Create StockTakeReport component in src/components/stocktake/StockTakeReport.tsx (discrepancy report display)
+- [x] T151 [P] [US7] Create StockTakeSessionList component in src/components/stocktake/StockTakeSessionList.tsx (active and completed sessions)
+- [x] T152 [P] [US7] Create StartStockTakeForm component in src/components/stocktake/StartStockTakeForm.tsx (define scope: category/location/all)
+- [x] T153 [P] [US7] Create StockTakeScanner component in src/components/stocktake/StockTakeScanner.tsx (full-screen scanning interface)
+- [x] T154 [P] [US7] Create StockTakeScanList component in src/components/stocktake/StockTakeScanList.tsx (real-time list of scanned assets)
+- [x] T155 [P] [US7] Create StockTakeProgress component in src/components/stocktake/StockTakeProgress.tsx (progress bar: scanned / total)
+- [x] T156 [P] [US7] Create StockTakeReport component in src/components/stocktake/StockTakeReport.tsx (discrepancy report display)
 
 ### Stock Take Business Logic for User Story 7
 
-- [ ] T157 [US7] Load expected assets based on scope at session start
-- [ ] T158 [US7] Add real-time scan validation (duplicate detection, unexpected asset handling)
-- [ ] T159 [US7] Calculate discrepancies (missing assets = expected - scanned)
-- [ ] T160 [US7] Implement bulk location update from stock take results
-- [ ] T161 [US7] Add asset status update from stock take (mark as Lost, Destroyed)
+- [x] T157 [US7] Load expected assets based on scope at session start
+- [x] T158 [US7] Add real-time scan validation (duplicate detection, unexpected asset handling)
+- [x] T159 [US7] Calculate discrepancies (missing assets = expected - scanned)
+- [x] T160 [US7] Implement bulk location update from stock take results
+- [x] T161 [US7] Add asset status update from stock take (mark as Lost, Destroyed)
 
 ### Stock Take Offline Support for User Story 7
 
@@ -384,7 +474,8 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 ### Maintenance UI Components for User Story 8
 
 - [ ] T171 [P] [US8] Create MaintenanceRecordList component in src/components/maintenance/MaintenanceRecordList.tsx (display maintenance history)
-- [ ] T172 [P] [US8] Create MaintenanceRecordForm component in src/components/maintenance/MaintenanceRecordForm.tsx (record completed maintenance with photos)
+- [ ] T172 [P] [US8] Create MaintenanceRecordForm component in src/components/maintenance/MaintenanceRecordForm.tsx (record completed maintenance with notes input)
+- [ ] T172a [P] [US8] Implement photo upload in MaintenanceRecordForm using Mantine Dropzone (up to 10 photos, max 5MB each, formats: JPG/PNG/HEIC/WebP, store in ChurchTools file storage)
 - [ ] T173 [P] [US8] Create MaintenanceScheduleForm component in src/components/maintenance/MaintenanceScheduleForm.tsx (configure recurring maintenance)
 - [ ] T174 [P] [US8] Create MaintenanceDashboard component in src/components/maintenance/MaintenanceDashboard.tsx (technician view: overdue + upcoming)
 - [ ] T175 [P] [US8] Create MaintenanceReminderBadge component in src/components/maintenance/MaintenanceReminderBadge.tsx (overdue indicator)
@@ -403,8 +494,8 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 - [ ] T182 [US8] Add maintenance reminder indicator to AssetList
 - [ ] T183 [US8] Add "Record Maintenance" button to AssetDetail (opens MaintenanceRecordForm)
 - [ ] T184 [US8] Implement automatic next due date update after recording maintenance
-- [ ] T185 [US8] Add photo upload support for maintenance records (Mantine Dropzone)
-- [ ] T186 [US8] Add maintenance notification system (browser notifications or in-app alerts)
+- [ ] T185 [US8] Implement ChurchTools email service integration in src/services/api/ChurchToolsEmailService.ts (wrapper for ChurchTools email API)
+- [ ] T186 [US8] Add maintenance reminder email sending via ChurchTools email service (triggered by scheduled job or client-side check)
 
 **Checkpoint**: At this point, User Stories 1-8 are complete - users have automated maintenance scheduling with reminders and compliance tracking.
 
@@ -486,6 +577,15 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 - [ ] T226 Add keyboard shortcuts documentation (modal with all shortcuts)
 - [ ] T227 Add accessibility audit (ARIA labels, keyboard navigation)
 
+### System Configuration
+
+- [ ] T227a [P] Create Settings page component in src/components/settings/SettingsPage.tsx (organization-wide configuration)
+- [ ] T227b [P] Create AssetPrefixSettings component in src/components/settings/AssetPrefixSettings.tsx (configure global asset number prefix with preview of next number, show count of existing assets, warn about consistency impact)
+- [ ] T227c [P] Create LocationSettings component in src/components/settings/LocationSettings.tsx (manage pre-defined location list with CRUD operations, display count of assets per location, prevent deletion if assets exist)
+- [ ] T227d [P] Update AssetForm location field to use Mantine Select with creatable support (autocomplete from pre-defined locations, allow inline creation with "Create new location" option, validate new location names)
+- [ ] T227e Add settings route to App.tsx and navigation menu link
+- [ ] T227f [P] Document photo storage abstraction layer in src/services/storage/README.md (interface contracts for IPhotoStorage, migration path from base64 to ChurchTools Files module, backward compatibility strategy, example implementation patterns)
+
 ### Documentation & Developer Experience
 
 - [ ] T228 [P] Add JSDoc comments to all services and utilities
@@ -505,6 +605,18 @@ Repository root: `/workspaces/churchtools-inventory-extension/`
 - [ ] T239 Perform cross-browser testing (Chrome, Safari, Firefox)
 - [ ] T240 Test on mobile devices (responsive behavior, camera scanning)
 - [ ] T241 Test offline functionality (stock take with network disconnection)
+
+### Edge Case Handling
+
+- [ ] T241a [P] Implement booking cancellation when asset becomes unavailable (FR-062): detect status change to "Broken" on booked asset, cancel booking with status "Cancelled - Asset Unavailable", send email notification via ChurchTools email service
+- [ ] T241b [P] Add duplicate scan prevention in stock take (FR-063): check if asset already scanned in current session, show warning with timestamp, prevent count increment
+- [ ] T241c [P] Add parent asset deletion protection (FR-064): check for children with active bookings, show error with count, prevent deletion
+- [ ] T241d [P] Add kit component conflict detection (FR-065): check for individual bookings when booking kit, show error with conflicting asset numbers, prevent kit booking
+- [ ] T241e [P] Allow manual maintenance record creation (FR-066): add "Manual Entry" mode in MaintenanceRecordForm, require asset number input, show verification warning, proceed with record
+- [ ] T241f [P] Implement optimistic locking for bookings (FR-067): add version field to bookings, detect concurrent modifications, show error to second user with refresh prompt
+- [ ] T241g [P] Add barcode regeneration feature (FR-068): add "Regenerate Barcode" button in AssetDetail, archive old barcode with timestamp, generate new barcode, log change
+- [ ] T241h [P] Handle damaged asset check-in (FR-069): prompt for damage photos and description during check-in, make both required, update status to "Broken", send email to maintenance personnel
+- [ ] T241i [P] Handle insufficient flexible kit availability (FR-070): check available pool assets before kit booking, show detailed error with required vs available counts, prevent booking
 
 ### Security & Production Readiness
 
@@ -646,11 +758,12 @@ Team Member 4: T059-T063 (Integration: routing, navigation, notifications)
 
 1. Complete Phase 1: Setup (T001-T015) ← ~2-4 hours
 2. Complete Phase 2: Foundational (T016-T041) ← **CRITICAL** ~8-16 hours
-3. Complete Phase 3: User Story 1 (T042-T063) ← ~16-24 hours
-4. Complete Phase 4: User Story 2 (T064-T075) ← ~8-12 hours
-5. **STOP and VALIDATE**: Test MVP independently
-6. Deploy/demo basic asset management with custom fields
-7. Gather user feedback before continuing
+3. Complete Phase 2.5: Testing Infrastructure (T041a-T041v) ← **CRITICAL** ~6-10 hours 🧪
+4. Complete Phase 3: User Story 1 (T042-T063) + automated tests ← ~20-30 hours
+5. Complete Phase 4: User Story 2 (T064-T075) + automated tests ← ~12-18 hours
+6. **STOP and VALIDATE**: Run automated test suite + manual UI testing
+7. Deploy/demo basic asset management with custom fields
+8. Gather user feedback before continuing
 
 **MVP Scope**: Basic asset tracking with custom categories and fields. Users can:
 - Create asset categories with custom field definitions
@@ -703,17 +816,26 @@ Team Member 4: T059-T063 (Integration: routing, navigation, notifications)
 |-------|-----------|------------|----------|
 | Phase 1: Setup | 15 tasks | N/A | Foundation |
 | Phase 2: Foundational | 26 tasks | N/A | Foundation ⚠️ BLOCKER |
+| Phase 2.5: Testing Infrastructure | 21 tasks | N/A | P0 🧪 CRITICAL |
 | Phase 3: User Story 1 | 22 tasks | Basic Asset Creation | P1 🎯 MVP |
 | Phase 4: User Story 2 | 12 tasks | Custom Categories/Fields | P1 🎯 MVP |
 | Phase 5: User Story 3 | 16 tasks | Barcode/QR Scanning | P2 |
 | Phase 6: User Story 4 | 13 tasks | Multi-Asset (Parent-Child) | P2 |
-| Phase 7: User Story 5 | 24 tasks | Booking & Reservation | P2 |
+| Phase 7: User Story 5 | 25 tasks | Booking & Reservation | P2 |
 | Phase 8: User Story 6 | 18 tasks | Equipment Kits | P3 |
 | Phase 9: User Story 7 | 20 tasks | Stock Take & Audits | P3 |
-| Phase 10: User Story 8 | 20 tasks | Maintenance Scheduling | P3 |
+| Phase 10: User Story 8 | 22 tasks | Maintenance Scheduling | P3 |
 | Phase 11: User Story 9 | 27 tasks | Filtered Views & Reports | P3 |
-| Phase 12: Polish | 43 tasks | Cross-Cutting | Final |
-| **TOTAL** | **256 tasks** | 9 user stories | |
+| Phase 12: Polish | 58 tasks | Cross-Cutting | Final |
+| **TOTAL** | **295 tasks** | 9 user stories | |
+
+**Changes from original plan**:
+- Added T128a: Booking reminder emails via ChurchTools email service
+- Added T172a: Maintenance photo upload implementation
+- Added T185-T186: ChurchTools email service integration (replaces T186 notification system)
+- Added T227a-T227f: Settings page with asset prefix, location management, and photo storage documentation
+- Added T241a-T241i: Edge case handling (9 new tasks)
+- Added Phase 2.5 (T041a-T041v): Automated testing infrastructure setup (21 new tasks) 🧪
 
 ### Parallel Opportunities Identified
 
@@ -724,11 +846,13 @@ Team Member 4: T059-T063 (Integration: routing, navigation, notifications)
 
 ### MVP Scope
 
-**Minimum Viable Product** = Phase 1 + Phase 2 + Phase 3 + Phase 4
-- **Total**: 75 tasks (15 + 26 + 22 + 12)
-- **Estimated Effort**: 40-60 developer hours
-- **Delivers**: Complete basic asset management with custom fields
-- **Value**: Organizations can immediately start tracking inventory
+**Minimum Viable Product** = Phase 1 + Phase 2 + Phase 2.5 + Phase 3 + Phase 4 + Bug Fixes
+- **Foundation**: 96 tasks (15 + 26 + 21 + 22 + 12)
+- **Bug Fixes**: 13 issues from testing (documented in BUG_FIX_PLAN.md)
+- **Estimated Effort**: 50-70 developer hours (foundation + testing) + 58 hours (bug fixes) = 108-128 hours total
+- **Delivers**: Complete basic asset management with custom fields AND comprehensive automated tests
+- **Value**: Organizations can immediately start tracking inventory with confidence in test coverage
+- **Status**: Foundation complete, testing infrastructure pending, bug fixes in progress (Phase 5)
 
 ---
 
@@ -740,7 +864,8 @@ All tasks designed to comply with project constitution v1.0.0:
 ✅ **User Experience Consistency**: Mantine UI configured to match ChurchTools (T013), responsive design throughout  
 ✅ **Code Quality**: ESLint configured (T010, T039), JSDoc required (T228), < 50 line functions encouraged  
 ✅ **Performance Budget**: Bundle size monitored (T041, T219-T220), code splitting implemented (T215), virtualization added (T214)  
-✅ **Testing Strategy**: Manual testing required (T238-T241), automated tests for complex logic (T234-T237)  
+✅ **Testing Strategy**: Comprehensive automated tests for ALL business logic (Phase 2.5, T041a-T041v), manual testing ONLY for UI/UX (T238-T241), coverage targets: 90%+ services/hooks/utils, 80%+ components  
+✅ **Environment Isolation**: Automatic prefix switching based on context (T041l-T041n), test mode uses test- prefix for destructive tests, dev/prod environments preserve separation, test users [4618, 6465, 11672, 6462] for safe testing  
 ✅ **Maintainability**: Feature-based organization, clear separation of concerns, comprehensive documentation (T228-T233)
 
 ---
@@ -766,7 +891,8 @@ All tasks designed to comply with project constitution v1.0.0:
 ---
 
 **Generated**: 2025-10-19  
-**Total Tasks**: 256  
+**Last Updated**: 2025-10-20 (Added Phase 2.5: Testing Infrastructure with automatic prefix switching)  
+**Total Tasks**: 295  
 **User Stories**: 9 (2x P1, 3x P2, 4x P3)  
-**MVP Scope**: 75 tasks (US1 + US2)  
+**MVP Scope**: 96 tasks (Setup + Foundational + Testing + US1 + US2)  
 **Constitution**: v1.0.0 compliant ✅

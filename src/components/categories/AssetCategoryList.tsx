@@ -12,13 +12,15 @@ import {
 } from '@mantine/core';
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable';
 import {
+  IconCopy,
   IconDots,
   IconEdit,
   IconSearch,
   IconTrash,
 } from '@tabler/icons-react';
-import { useCategories, useDeleteCategory } from '../../hooks/useCategories';
+import { useCategories, useDeleteCategory, useDuplicateCategory } from '../../hooks/useCategories';
 import { notifications } from '@mantine/notifications';
+import { IconDisplay } from './IconDisplay';
 import type { AssetCategory } from '../../types/entities';
 
 interface AssetCategoryListProps {
@@ -34,6 +36,7 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
 
   const { data: categories = [], isLoading, error } = useCategories();
   const deleteCategory = useDeleteCategory();
+  const duplicateCategory = useDuplicateCategory();
 
   // Filter categories based on search
   const filteredCategories = categories.filter((category) => {
@@ -92,6 +95,29 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
     }
   };
 
+  const handleDuplicate = async (category: AssetCategory) => {
+    try {
+      const duplicated = await duplicateCategory.mutateAsync({
+        id: category.id,
+        name: category.name,
+        icon: category.icon,
+        customFields: category.customFields,
+      });
+      
+      notifications.show({
+        title: 'Success',
+        message: `Category "${duplicated.name}" has been created`,
+        color: 'green',
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'Failed to duplicate category',
+        color: 'red',
+      });
+    }
+  };
+
   if (error) {
     return (
       <Card withBorder>
@@ -126,11 +152,7 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                 width: 60,
                 render: (category) => (
                   <Box ta="center">
-                    {category.icon ? (
-                      <Text size="xl">{category.icon}</Text>
-                    ) : (
-                      <Text c="dimmed" size="sm">—</Text>
-                    )}
+                    <IconDisplay iconName={category.icon} size={24} />
                   </Box>
                 ),
               },
@@ -196,6 +218,15 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                             Edit
                           </Menu.Item>
                         )}
+                        <Menu.Item
+                          leftSection={<IconCopy size={14} />}
+                          onClick={() => {
+                            void handleDuplicate(category);
+                          }}
+                          disabled={duplicateCategory.isPending}
+                        >
+                          Duplicate
+                        </Menu.Item>
                         <Menu.Item
                           color="red"
                           leftSection={<IconTrash size={14} />}

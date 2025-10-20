@@ -1,5 +1,5 @@
 /* eslint-disable max-lines-per-function */
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   ActionIcon,
   Badge,
@@ -29,6 +29,8 @@ import { useAssets, useDeleteAsset } from '../../hooks/useAssets';
 import { useCategories } from '../../hooks/useCategories';
 import { notifications } from '@mantine/notifications';
 import { AssetStatusBadge } from './AssetStatusBadge';
+import { CustomFieldFilterInput } from './CustomFieldFilterInput';
+import { IconDisplay } from '../categories/IconDisplay';
 import type { Asset, AssetStatus, AssetFilters } from '../../types/entities';
 
 interface AssetListProps {
@@ -119,7 +121,8 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
     filters.categoryId || 
     filters.status || 
     filters.location || 
-    filters.search
+    filters.search ||
+    (filters.customFields && Object.keys(filters.customFields).length > 0)
   );
 
   if (error) {
@@ -145,7 +148,13 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
             Filters
             {hasActiveFilters && (
               <Badge size="xs" circle ml="xs">
-                {[filters.categoryId, filters.status, filters.location, filters.search].filter(Boolean).length}
+                {[
+                  filters.categoryId, 
+                  filters.status, 
+                  filters.location, 
+                  filters.search,
+                  ...(filters.customFields ? Object.keys(filters.customFields) : [])
+                ].filter(Boolean).length}
               </Badge>
             )}
           </Button>
@@ -221,6 +230,42 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                 }}
               />
             </Group>
+
+            {filters.categoryId && (() => {
+              const selectedCategory = categories.find(c => c.id === filters.categoryId);
+              if (selectedCategory && selectedCategory.customFields.length > 0) {
+                return (
+                  <>
+                    <Text size="sm" fw={600} mt="md">Custom Field Filters</Text>
+                    <Group grow>
+                      {selectedCategory.customFields.map((field) => (
+                        <CustomFieldFilterInput
+                          key={field.id}
+                          field={field}
+                          value={filters.customFields?.[field.id]}
+                          onChange={(value) => {
+                            const currentCustomFields = filters.customFields || {};
+                            const newCustomFields = value === undefined
+                              ? Object.fromEntries(
+                                  Object.entries(currentCustomFields).filter(([k]) => k !== field.id)
+                                )
+                              : { ...currentCustomFields, [field.id]: value };
+                            
+                            setFilters({
+                              ...filters,
+                              customFields: Object.keys(newCustomFields).length > 0 
+                                ? newCustomFields 
+                                : undefined,
+                            });
+                          }}
+                        />
+                      ))}
+                    </Group>
+                  </>
+                );
+              }
+              return null;
+            })()}
           </Stack>
         </Card>
       )}
@@ -263,11 +308,18 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               accessor: 'category',
               title: 'Category',
               sortable: true,
-              render: (asset) => (
-                <Badge variant="light" color="blue">
-                  {asset.category.name}
-                </Badge>
-              ),
+              render: (asset) => {
+                const icon = asset.category.icon;
+                return (
+                  <Badge 
+                    variant="light" 
+                    color="blue" 
+                    leftSection={icon ? <IconDisplay iconName={icon} size={14} /> : undefined}
+                  >
+                    {asset.category.name}
+                  </Badge>
+                );
+              },
             },
             {
               accessor: 'status',
@@ -280,8 +332,8 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Location',
               sortable: true,
               render: (asset) => (
-                <Text size="sm">
-                  {asset.location || <Text c="dimmed">—</Text>}
+                <Text size="sm" c={asset.location ? undefined : 'dimmed'}>
+                  {asset.location || '—'}
                 </Text>
               ),
             },
@@ -290,7 +342,9 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Manufacturer',
               render: (asset) => (
                 <Box>
-                  <Text size="sm">{asset.manufacturer || <Text c="dimmed">—</Text>}</Text>
+                  <Text size="sm" c={asset.manufacturer ? undefined : 'dimmed'}>
+                    {asset.manufacturer || '—'}
+                  </Text>
                   {asset.model && (
                     <Text size="xs" c="dimmed">
                       {asset.model}
@@ -359,3 +413,12 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
     </Stack>
   );
 }
+
+/**
+ * Memoized AssetList component to prevent unnecessary re-renders (T216)
+ * Only re-renders when props actually change
+ */
+export const AssetListMemo = memo(AssetList);
+
+// Export both versions - use memoized version in pages for better performance
+export { AssetList };

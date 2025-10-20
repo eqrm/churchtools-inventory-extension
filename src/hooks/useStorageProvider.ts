@@ -59,8 +59,20 @@ export function useStorageProvider(): IStorageProvider | null {
     useEffect(() => {
         async function initializeProvider() {
             try {
-                const baseUrl = import.meta.env['VITE_BASE_URL'];
-                const moduleKey = import.meta.env['VITE_KEY'] || 'fkoinventorymanagement';
+                const baseUrl = import.meta.env.VITE_BASE_URL;
+                const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+                const environment = import.meta.env.VITE_ENVIRONMENT ?? 'development';
+                const isTest = import.meta.env.VITEST === 'true';
+                
+                // Construct module key with environment prefix (no hyphens due to ChurchTools limitation)
+                let moduleKey: string;
+                if (isTest) {
+                    moduleKey = `test${baseKey}`;
+                } else if (environment === 'production') {
+                    moduleKey = `prod${baseKey}`;
+                } else {
+                    moduleKey = `dev${baseKey}`;
+                }
                 
                 if (!baseUrl) {
                     throw new Error('VITE_BASE_URL not configured. Please set it in your .env file.');

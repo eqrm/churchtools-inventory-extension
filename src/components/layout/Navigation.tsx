@@ -4,18 +4,25 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconBox,
   IconCategory,
+  IconClipboardList,
   IconHistory,
   IconHome,
+  IconScan,
 } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface NavigationProps {
   children: React.ReactNode;
+  onScanClick?: () => void;
 }
 
-export function Navigation({ children }: NavigationProps) {
+export function Navigation({ children, onScanClick }: NavigationProps) {
   const [opened, { toggle }] = useDisclosure();
   const location = useLocation();
+
+  // Detect platform for correct keyboard shortcut display
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+  const scanShortcut = isMac ? '⌘S' : 'Alt+S';
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -74,6 +81,27 @@ export function Navigation({ children }: NavigationProps) {
           active={isActive('/assets')}
           onClick={() => {
             if (opened) toggle();
+          }}
+        />
+
+        <NavLink
+          component={Link}
+          to="/stock-take"
+          label="Stock Take"
+          leftSection={<IconClipboardList size={20} />}
+          active={isActive('/stock-take')}
+          onClick={() => {
+            if (opened) toggle();
+          }}
+        />
+
+        <NavLink
+          label="Quick Scan"
+          description={scanShortcut}
+          leftSection={<IconScan size={20} />}
+          onClick={() => {
+            if (opened) toggle();
+            onScanClick?.();
           }}
         />
         

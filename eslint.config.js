@@ -10,6 +10,8 @@ export default tseslint.config(
       'dist', 
       '.vite', 
       'node_modules',
+      'coverage',  // Exclude coverage reports from linting
+      'html',      // Exclude test HTML reports
       'specs/**',  // Exclude specification contracts from linting
       'src/utils/ct-types.d.ts',  // Third-party ChurchTools type definitions
       '*.config.ts',  // Config files (vite.config.ts, etc.)

@@ -110,3 +110,36 @@ export function useDeleteCategory() {
     },
   });
 }
+
+/**
+ * Hook to duplicate a category with all custom fields
+ */
+export function useDuplicateCategory() {
+  const queryClient = useQueryClient();
+  const provider = useStorageProvider();
+
+  return useMutation({
+    mutationFn: async (sourceCategory: CategoryCreate & { id: string }) => {
+      if (!provider) throw new Error('Storage provider not initialized');
+      
+      // Create new category with " (Copy)" suffix
+      const newCategory: CategoryCreate = {
+        name: `${sourceCategory.name} (Copy)`,
+        icon: sourceCategory.icon,
+        customFields: sourceCategory.customFields.map(field => ({
+          ...field,
+          id: `field-${Date.now().toString()}-${Math.random().toString(36).substring(2, 9)}`,
+        })),
+      };
+      
+      return await provider.createCategory(newCategory);
+    },
+    onSuccess: (duplicatedCategory) => {
+      // Invalidate category lists to refetch
+      void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() });
+      
+      // Optimistically add to cache
+      queryClient.setQueryData(categoryKeys.detail(duplicatedCategory.id), duplicatedCategory);
+    },
+  });
+}

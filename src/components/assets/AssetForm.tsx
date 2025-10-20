@@ -18,6 +18,7 @@ import { useCategories, useCategory } from '../../hooks/useCategories';
 import { useCreateAsset, useUpdateAsset } from '../../hooks/useAssets';
 import { CustomFieldInput } from './CustomFieldInput';
 import type { Asset, AssetCreate, AssetStatus, CustomFieldValue } from '../../types/entities';
+import { validateCustomFieldValue } from '../../utils/validators';
 
 interface AssetFormProps {
   asset?: Asset;
@@ -108,6 +109,18 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
 
   const handleSubmit = async (values: AssetFormValues) => {
     try {
+      // Validate custom fields
+      if (selectedCategory) {
+        for (const field of selectedCategory.customFields) {
+          const value = values.customFieldValues[field.name];
+          const error = validateCustomFieldValue(value, field, field.name);
+          if (error) {
+            form.setFieldError(`customFieldValues.${field.name}`, error);
+            return; // Stop submission if validation fails
+          }
+        }
+      }
+
       if (isEditing && asset) {
         // Update existing asset
         const updated = await updateAsset.mutateAsync({
@@ -279,6 +292,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                       onChange={(value) => {
                         form.setFieldValue(`customFieldValues.${field.name}`, value);
                       }}
+                      error={form.errors[`customFieldValues.${field.name}`] as string | undefined}
                       disabled={isLoading}
                     />
                   </Grid.Col>

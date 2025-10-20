@@ -29,6 +29,7 @@ import type {
   MaintenanceScheduleCreate,
   StockTakeSession,
   StockTakeSessionCreate,
+  StockTakeStatus,
   ChangeHistoryEntry,
   SavedView,
   SavedViewCreate,
@@ -323,6 +324,13 @@ export interface IStorageProvider {
   // ============================================================================
   // Stock Take
   // ============================================================================
+  
+  /**
+   * Get all stock take sessions
+   * @param filters - Optional filters (status, dateRange, etc.)
+   * @returns Array of stock take sessions
+   */
+  getStockTakeSessions(filters?: { status?: StockTakeStatus }): Promise<StockTakeSession[]>
   
   /**
    * Create a new stock take session

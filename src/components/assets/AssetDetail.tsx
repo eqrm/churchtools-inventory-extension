@@ -14,18 +14,21 @@ import {
 } from '@mantine/core';
 import {
   IconCalendar,
+  IconDownload,
   IconEdit,
   IconHash,
   IconHistory,
   IconLocation,
   IconPackage,
-  IconQrcode,
+  IconPrinter,
   IconTag,
   IconUser,
 } from '@tabler/icons-react';
 import { useAsset } from '../../hooks/useAssets';
 import { useChangeHistory } from '../../hooks/useChangeHistory';
 import { AssetStatusBadge } from './AssetStatusBadge';
+import { BarcodeDisplay } from '../scanner/BarcodeDisplay';
+import { QRCodeDisplay } from '../scanner/QRCodeDisplay';
 import { DataTable } from 'mantine-datatable';
 import type { ChangeHistoryEntry } from '../../types/entities';
 
@@ -74,7 +77,17 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
           {label}
         </Text>
-        <Text size="sm">{value || <Text c="dimmed">—</Text>}</Text>
+        <Box>
+          {value ? (
+            typeof value === 'string' ? (
+              <Text size="sm">{value}</Text>
+            ) : (
+              value
+            )
+          ) : (
+            <Text size="sm" c="dimmed">—</Text>
+          )}
+        </Box>
       </Box>
     </Group>
   );
@@ -306,21 +319,107 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
         {/* Sidebar */}
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Stack gap="md">
-            {/* QR Code / Barcode */}
+            {/* Barcode */}
+            <Card withBorder>
+              <Stack gap="md" align="center">
+                <Title order={5}>Barcode</Title>
+                <Box style={{ border: '1px solid #e9ecef', padding: '12px', borderRadius: '8px', backgroundColor: '#fff' }}>
+                  <BarcodeDisplay 
+                    value={asset.assetNumber}
+                    alt={`Barcode for ${asset.assetNumber}`}
+                    width={200}
+                  />
+                </Box>
+                <Text size="xs" c="dimmed" ta="center">
+                  Asset Number: {asset.assetNumber}
+                </Text>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconDownload size={14} />}
+                    onClick={() => {
+                      const promise = import('../../services/barcode/BarcodeService').then(m => {
+                        const barcodeUrl = m.generateBarcode(asset.assetNumber);
+                        m.downloadImage(barcodeUrl, `barcode-${asset.assetNumber}.png`);
+                      }).catch((err: unknown) => {
+                        console.error('Failed to download barcode:', err);
+                      });
+                      void promise;
+                    }}
+                  >
+                    Download
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconPrinter size={14} />}
+                    onClick={() => {
+                      const promise = import('../../services/barcode/BarcodeService').then(m => {
+                        const barcodeUrl = m.generateBarcode(asset.assetNumber);
+                        m.printImage(barcodeUrl, `Barcode - ${asset.name}`);
+                      }).catch((err: unknown) => {
+                        console.error('Failed to print barcode:', err);
+                      });
+                      void promise;
+                    }}
+                  >
+                    Print
+                  </Button>
+                </Group>
+              </Stack>
+            </Card>
+
+            {/* QR Code */}
             <Card withBorder>
               <Stack gap="md" align="center">
                 <Title order={5}>QR Code</Title>
-                <Tooltip label="QR Code for scanning">
-                  <Box style={{ border: '1px solid #e0e0e0', padding: '8px', borderRadius: '4px' }}>
-                    <IconQrcode size={100} stroke={1.5} />
+                <Tooltip label="Scan to view this asset in ChurchTools">
+                  <Box style={{ border: '1px solid #e9ecef', padding: '12px', borderRadius: '8px', backgroundColor: '#fff' }}>
+                    <QRCodeDisplay
+                      value={`${window.location.origin}${window.location.pathname}#/assets/${asset.id}`}
+                      alt={`QR Code for ${asset.assetNumber}`}
+                      size={180}
+                    />
                   </Box>
                 </Tooltip>
                 <Text size="xs" c="dimmed" ta="center">
-                  Scan to view this asset
+                  Scan to view asset details
                 </Text>
-                <Text size="sm" fw={600} ta="center">
-                  {asset.assetNumber}
-                </Text>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconDownload size={14} />}
+                    onClick={() => {
+                      const promise = import('../../services/barcode/BarcodeService').then(async m => {
+                        const qrUrl = await m.generateQRCode(`${window.location.origin}${window.location.pathname}#/assets/${asset.id}`);
+                        m.downloadImage(qrUrl, `qrcode-${asset.assetNumber}.png`);
+                      }).catch((err: unknown) => {
+                        console.error('Failed to download QR code:', err);
+                      });
+                      void promise;
+                    }}
+                  >
+                    Download
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconPrinter size={14} />}
+                    onClick={() => {
+                      const promise = import('../../services/barcode/BarcodeService').then(async m => {
+                        const qrUrl = await m.generateQRCode(`${window.location.origin}${window.location.pathname}#/assets/${asset.id}`);
+                        m.printImage(qrUrl, `QR Code - ${asset.name}`);
+                      }).catch((err: unknown) => {
+                        console.error('Failed to print QR code:', err);
+                      });
+                      void promise;
+                    }}
+                  >
+                    Print
+                  </Button>
+                </Group>
               </Stack>
             </Card>
 

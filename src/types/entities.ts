@@ -97,6 +97,7 @@ export interface Asset {
   category: {
     id: UUID
     name: string
+    icon?: string
   }
   status: AssetStatus
   location?: string

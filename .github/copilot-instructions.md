@@ -19,6 +19,7 @@ npm test && npm run lint
 TypeScript 5.x with strict mode enabled: Follow standard conventions
 
 ## Recent Changes
+- 001-inventory-management: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 001-inventory-management: Added TypeScript 5.x with strict mode enabled
 
 <!-- MANUAL ADDITIONS START -->

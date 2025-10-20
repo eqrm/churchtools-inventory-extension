@@ -23,6 +23,7 @@ import type {
   MaintenanceScheduleCreate,
   StockTakeSession,
   StockTakeSessionCreate,
+  StockTakeStatus,
   SavedView,
   SavedViewCreate,
   PersonInfo,
@@ -151,6 +152,15 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   async deleteCategory(id: string): Promise<void> {
     const user = await this.apiClient.getCurrentUser();
     
+    // Check if category has any assets
+    const assets = await this.getAssets({ categoryId: id });
+    if (assets.length > 0) {
+      throw new Error(
+        `Cannot delete category: ${assets.length.toString()} asset(s) are still using this category. ` +
+        `Please delete or reassign these assets first.`
+      );
+    }
+    
     // Record change history before deletion
     await this.recordChange({
       entityType: 'category',
@@ -191,20 +201,16 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   }
 
   async getAsset(id: string): Promise<Asset> {
-    // We need to search across all categories since we don't know which one contains this asset
-    const categories = await this.getCategories();
+    // ChurchTools API doesn't support getting individual data values by ID
+    // We need to fetch all assets and find the one we want
+    const assets = await this.getAssets();
+    const asset = assets.find(a => a.id === id);
     
-    for (const category of categories) {
-      try {
-        const value = await this.apiClient.getDataValue(this.moduleId, category.id, id);
-        return this.mapToAsset(value, category);
-      } catch {
-        // Asset not in this category, continue searching
-        continue;
-      }
+    if (!asset) {
+      throw new Error(`Asset with ID ${id} not found`);
     }
     
-    throw new Error(`Asset with ID ${id} not found`);
+    return asset;
   }
 
   async getAssetByNumber(assetNumber: string): Promise<Asset> {
@@ -276,11 +282,14 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const user = await this.apiClient.getCurrentUser();
     const previous = await this.getAsset(id);
     
-    const assetData = {
-      ...data,
-      lastModifiedBy: user.id,
-      lastModifiedByName: `${user.firstName} ${user.lastName}`,
-      lastModifiedAt: new Date().toISOString(),
+    // Merge update data with previous asset data
+    const updatedAssetData = this.mergeAssetData(previous, data, user);
+    
+    // ChurchTools API requires: { id, dataCategoryId, value: string }
+    const dataValue = {
+      id: Number(id),
+      dataCategoryId: Number(previous.category.id),
+      value: JSON.stringify(updatedAssetData),
     };
     
     // Get full category for mapping
@@ -289,17 +298,52 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       this.moduleId,
       previous.category.id,
       id,
-      assetData
+      dataValue
     );
     const asset = this.mapToAsset(updated, fullCategory);
     
     // Record change history with specific field changes
+    await this.recordAssetChanges(asset, previous, data, user);
+    
+    return asset;
+  }
+
+  private mergeAssetData(previous: Asset, data: AssetUpdate, user: { id: string; firstName: string; lastName: string }): Record<string, unknown> {
+    return {
+      assetNumber: previous.assetNumber,
+      name: data.name ?? previous.name,
+      description: data.description ?? previous.description,
+      manufacturer: data.manufacturer ?? previous.manufacturer,
+      model: data.model ?? previous.model,
+      status: data.status ?? previous.status,
+      location: data.location ?? previous.location,
+      inUseBy: data.inUseBy ?? previous.inUseBy,
+      barcode: data.barcode ?? previous.barcode,
+      qrCode: data.qrCode ?? previous.qrCode,
+      customFieldValues: data.customFieldValues ?? previous.customFieldValues,
+      parentAssetId: data.parentAssetId ?? previous.parentAssetId,
+      isParent: data.isParent ?? previous.isParent,
+      createdBy: previous.createdBy,
+      createdByName: previous.createdByName,
+      createdAt: previous.createdAt,
+      lastModifiedBy: user.id,
+      lastModifiedByName: `${user.firstName} ${user.lastName}`,
+      lastModifiedAt: new Date().toISOString(),
+    };
+  }
+
+  private async recordAssetChanges(
+    asset: Asset,
+    previous: Asset,
+    data: AssetUpdate,
+    user: { id: string; firstName: string; lastName: string }
+  ): Promise<void> {
     for (const [field, newValue] of Object.entries(data)) {
       const oldValue = previous[field as keyof Asset];
       if (oldValue !== newValue) {
         await this.recordChange({
           entityType: 'asset',
-          entityId: id,
+          entityId: asset.id,
           entityName: asset.name,
           action: 'updated',
           fieldName: field,
@@ -310,8 +354,6 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
         });
       }
     }
-    
-    return asset;
   }
 
   async deleteAsset(id: string): Promise<void> {
@@ -345,13 +387,38 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const historyCategory = await this.getOrCreateHistoryCategory();
     const entries = await this.apiClient.getDataValues(this.moduleId, historyCategory.id);
     
-    // Filter by entity type and ID
-    let history = entries
-      .filter((e: unknown) => {
-        const entry = e as Record<string, unknown>;
-        return entry['entityType'] === entityType && entry['entityId'] === entityId;
-      })
-      .map((e: unknown) => this.mapToChangeHistoryEntry(e));
+    // Parse and filter by entity type and ID
+    let history: ChangeHistoryEntry[] = [];
+    
+    for (const e of entries) {
+      const raw = e as Record<string, unknown>;
+      // The actual change data is stored in the 'value' field as JSON
+      if (raw['value'] && typeof raw['value'] === 'string') {
+        try {
+          const parsed = JSON.parse(raw['value']) as Record<string, unknown>;
+          if (parsed['entityType'] === entityType && String(parsed['entityId']) === entityId) {
+            history.push({
+              id: String(raw['id']),
+              entityType: parsed['entityType'] as ChangeHistoryEntry['entityType'],
+              entityId: entityId,
+              entityName: parsed['entityName'] as string | undefined,
+              action: parsed['action'] as ChangeHistoryEntry['action'],
+              fieldName: parsed['fieldName'] as string | undefined,
+              oldValue: parsed['oldValue'] as string | undefined,
+              newValue: parsed['newValue'] as string | undefined,
+              changedBy: parsed['changedBy'] as string,
+              changedByName: parsed['changedByName'] as string,
+              changedAt: parsed['changedAt'] as string,
+              ipAddress: parsed['ipAddress'] as string | undefined,
+              userAgent: parsed['userAgent'] as string | undefined,
+            });
+          }
+        } catch (error) {
+          console.error('Error parsing change history entry:', error);
+          continue;
+        }
+      }
+    }
     
     // Sort by date descending
     history.sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
@@ -439,6 +506,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       category: {
         id: category.id,
         name: category.name,
+        icon: category.icon,
       },
       manufacturer: asset['manufacturer'] as string | undefined,
       model: asset['model'] as string | undefined,
@@ -459,25 +527,6 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     };
   }
 
-  private mapToChangeHistoryEntry(data: unknown): ChangeHistoryEntry {
-    const entry = data as Record<string, unknown>;
-    return {
-      id: entry['id'] as string,
-      entityType: entry['entityType'] as ChangeHistoryEntry['entityType'],
-      entityId: entry['entityId'] as string,
-      entityName: entry['entityName'] as string | undefined,
-      action: entry['action'] as ChangeHistoryEntry['action'],
-      fieldName: entry['fieldName'] as string | undefined,
-      oldValue: entry['oldValue'] as string | undefined,
-      newValue: entry['newValue'] as string | undefined,
-      changedBy: entry['changedBy'] as string,
-      changedByName: entry['changedByName'] as string,
-      changedAt: entry['changedAt'] as string,
-      ipAddress: entry['ipAddress'] as string | undefined,
-      userAgent: entry['userAgent'] as string | undefined,
-    };
-  }
-
   private applyAssetFilters(assets: Asset[], filters: AssetFilters): Asset[] {
     let filtered = assets;
 
@@ -492,9 +541,6 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     if (filters.location) {
       filtered = filtered.filter(a => a.location === filters.location);
     }
-
-    // inUseBy filtering (if needed in future)
-    // Note: AssetFilters doesn't have assignedToId yet
 
     if (filters.parentAssetId) {
       filtered = filtered.filter(a => a.parentAssetId === filters.parentAssetId);
@@ -513,7 +559,60 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       );
     }
 
+    if (filters.customFields) {
+      filtered = filtered.filter(asset => 
+        this.matchesCustomFieldFilters(asset, filters.customFields as Record<string, unknown>)
+      );
+    }
+
     return filtered;
+  }
+
+  private matchesCustomFieldFilters(
+    asset: Asset, 
+    customFieldFilters: Record<string, unknown>
+  ): boolean {
+    // Check if all custom field filters match
+    for (const [fieldId, filterValue] of Object.entries(customFieldFilters)) {
+      const assetValue = asset.customFieldValues[fieldId];
+      
+      // If filter value is null/undefined, skip this filter
+      if (filterValue === null || filterValue === undefined) {
+        continue;
+      }
+      
+      // If asset doesn't have this field, exclude it
+      if (!assetValue) {
+        return false;
+      }
+      
+      // Handle array values (multi-select)
+      if (Array.isArray(filterValue)) {
+        if (!Array.isArray(assetValue)) {
+          return false;
+        }
+        // Check if at least one filter value is present in asset value
+        const hasMatch = filterValue.some(fv => 
+          (assetValue as unknown[]).includes(fv)
+        );
+        if (!hasMatch) {
+          return false;
+        }
+      } else if (Array.isArray(assetValue)) {
+        // Asset has array, filter is single value
+        if (!(assetValue as unknown[]).includes(filterValue)) {
+          return false;
+        }
+      } else if (typeof filterValue === 'string' || typeof filterValue === 'number' || typeof filterValue === 'boolean') {
+        // Both are primitives - compare as strings for partial matching
+        const assetStr = String(assetValue).toLowerCase();
+        const filterStr = String(filterValue).toLowerCase();
+        if (!assetStr.includes(filterStr)) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   private async getOrCreateHistoryCategory(): Promise<AssetCategory> {
@@ -641,24 +740,342 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     throw new Error('Maintenance not implemented - Phase 7 (US7)');
   }
 
-  async createStockTakeSession(_data: StockTakeSessionCreate): Promise<StockTakeSession> {
-    throw new Error('Stock take not implemented - Phase 8 (US8)');
+  // ============================================================================
+  // Stock Take
+  // ============================================================================
+
+  private async getStockTakeCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let stockTakeCategory = categories.find(cat => cat.name === '__StockTakeSessions__');
+    
+    if (!stockTakeCategory) {
+      // Create the stock take sessions category
+      const user = await this.apiClient.getCurrentUser();
+      const shorty = 'stocktake_' + Date.now().toString().substring(-4);
+      
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__StockTakeSessions__',
+        shorty,
+        description: 'Internal category for stock take sessions',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      stockTakeCategory = this.mapToAssetCategory(created);
+      
+      // Record change history
+      await this.recordChange({
+        entityType: 'category',
+        entityId: stockTakeCategory.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+    
+    return stockTakeCategory;
   }
 
-  async getStockTakeSession(_id: string): Promise<StockTakeSession> {
-    throw new Error('Stock take not implemented - Phase 8 (US8)');
+  async getStockTakeSessions(filters?: { status?: StockTakeStatus }): Promise<StockTakeSession[]> {
+    const category = await this.getStockTakeCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    
+    let sessions: StockTakeSession[] = values.map((val: unknown) => {
+      const record = val as { id: string; value: string };
+      const data = JSON.parse(record.value) as StockTakeSession;
+      return { ...data, id: record.id };
+    });
+    
+    // Apply status filter if provided
+    if (filters?.status) {
+      sessions = sessions.filter(s => s.status === filters.status);
+    }
+    
+    return sessions;
   }
 
-  async addStockTakeScan(_sessionId: string, _assetId: string, _scannedBy: string, _location?: string): Promise<StockTakeSession> {
-    throw new Error('Stock take not implemented - Phase 8 (US8)');
+  async getStockTakeSession(id: string): Promise<StockTakeSession> {
+    const sessions = await this.getStockTakeSessions();
+    const session = sessions.find(s => s.id === id);
+    
+    if (!session) {
+      throw new Error(`Stock take session with ID ${id} not found`);
+    }
+    
+    return session;
   }
 
-  async completeStockTakeSession(_sessionId: string): Promise<StockTakeSession> {
-    throw new Error('Stock take not implemented - Phase 8 (US8)');
+  private async loadExpectedAssetsForScope(scope: StockTakeSessionCreate['scope']): Promise<Asset[]> {
+    let expectedAssets: Asset[] = [];
+    
+    switch (scope.type) {
+      case 'all':
+        expectedAssets = await this.getAssets();
+        break;
+      
+      case 'category':
+        // Load assets from specified categories
+        for (const categoryId of scope.categoryIds || []) {
+          const assets = await this.getAssets({ categoryId });
+          expectedAssets.push(...assets);
+        }
+        break;
+      
+      case 'location':
+        // Load assets from specified locations
+        for (const location of scope.locations || []) {
+          const assets = await this.getAssets({ location });
+          expectedAssets.push(...assets);
+        }
+        break;
+      
+      case 'custom':
+        // Load specific assets by ID
+        if (scope.assetIds) {
+          for (const assetId of scope.assetIds) {
+            try {
+              const asset = await this.getAsset(assetId);
+              expectedAssets.push(asset);
+            } catch {
+              // Skip missing assets
+              console.warn(`Asset ${assetId} not found, skipping`);
+            }
+          }
+        }
+        break;
+    }
+    
+    return expectedAssets;
   }
 
-  async cancelStockTakeSession(_sessionId: string): Promise<void> {
-    throw new Error('Stock take not implemented - Phase 8 (US8)');
+  async createStockTakeSession(data: StockTakeSessionCreate): Promise<StockTakeSession> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getStockTakeCategory();
+    
+    // Load expected assets based on scope
+    const expectedAssets = await this.loadExpectedAssetsForScope(data.scope);
+    
+    // Create session object matching the actual type definition
+    const sessionData: Omit<StockTakeSession, 'id'> = {
+      startDate: data.startDate,
+      completedDate: data.completedDate,
+      status: data.status,
+      scope: data.scope,
+      expectedAssets: expectedAssets.map(a => ({
+        assetId: a.id,
+        assetNumber: a.assetNumber,
+        name: a.name,
+        location: a.location,
+      })),
+      scannedAssets: [],
+      missingAssets: [],
+      unexpectedAssets: [],
+      conductedBy: data.conductedBy,
+      conductedByName: data.conductedByName,
+      notes: data.notes,
+      createdAt: new Date().toISOString(),
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    // Save to ChurchTools
+    const dataValue = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(sessionData),
+    };
+    
+    const created = await this.apiClient.createDataValue(this.moduleId, category.id, dataValue);
+    const session: StockTakeSession = {
+      ...sessionData,
+      id: String((created as { id: number }).id),
+    };
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'stocktake',
+      entityId: session.id,
+      action: 'created',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return session;
+  }
+
+  private async getAssetNumberForScan(assetId: string): Promise<string> {
+    try {
+      const asset = await this.getAsset(assetId);
+      return asset.assetNumber;
+    } catch {
+      // Asset might not be in expected list
+      console.warn(`Asset ${assetId} not found in inventory`);
+      return 'Unknown';
+    }
+  }
+
+  async addStockTakeScan(
+    sessionId: string,
+    assetId: string,
+    scannedBy: string,
+    location?: string
+  ): Promise<StockTakeSession> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getStockTakeCategory();
+    const session = await this.getStockTakeSession(sessionId);
+    
+    // Check if asset already scanned
+    const alreadyScanned = session.scannedAssets.some(scan => scan.assetId === assetId);
+    if (alreadyScanned) {
+      throw new Error(`Asset ${assetId} has already been scanned in this session`);
+    }
+    
+    // Check if session is still active
+    if (session.status !== 'active') {
+      throw new Error(`Cannot add scans to a ${session.status} session`);
+    }
+    
+    // Get asset details
+    const assetNumber = await this.getAssetNumberForScan(assetId);
+    
+    // Add scan record
+    const scanRecord = {
+      assetId,
+      assetNumber,
+      scannedAt: new Date().toISOString(),
+      scannedBy,
+      scannedByName: scannedBy,
+      location,
+      condition: undefined,
+    };
+    
+    const updatedSessionData = {
+      ...session,
+      scannedAssets: [...session.scannedAssets, scanRecord],
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    // Save to ChurchTools
+    const dataValue = {
+      id: Number(sessionId),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedSessionData),
+    };
+    
+    await this.apiClient.updateDataValue(this.moduleId, category.id, sessionId, dataValue);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'stocktake',
+      entityId: sessionId,
+      action: 'updated',
+      newValue: assetId,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return { ...updatedSessionData, id: sessionId };
+  }
+
+  async completeStockTakeSession(sessionId: string): Promise<StockTakeSession> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getStockTakeCategory();
+    const session = await this.getStockTakeSession(sessionId);
+    
+    // Check if session is still active
+    if (session.status !== 'active') {
+      throw new Error(`Cannot complete a ${session.status} session`);
+    }
+    
+    // Calculate discrepancies
+    const scannedAssetIds = new Set(session.scannedAssets.map(scan => scan.assetId));
+    const expectedAssetMap = new Map(
+      session.expectedAssets.map(ea => [ea.assetId, ea])
+    );
+    
+    // Missing assets = expected but not scanned
+    const missingAssets = session.expectedAssets.filter(
+      ea => !scannedAssetIds.has(ea.assetId)
+    ).map(ea => ({
+      assetId: ea.assetId,
+      assetNumber: ea.assetNumber,
+      name: ea.name,
+      lastKnownLocation: ea.location,
+    }));
+    
+    // Unexpected assets = scanned but not expected
+    const unexpectedAssets = session.scannedAssets
+      .filter(scan => !expectedAssetMap.has(scan.assetId))
+      .map(scan => ({
+        assetId: scan.assetId,
+        assetNumber: scan.assetNumber,
+        name: scan.assetNumber, // Use asset number as name fallback
+      }));
+    
+    const updatedSessionData: StockTakeSession = {
+      ...session,
+      status: 'completed',
+      missingAssets,
+      unexpectedAssets,
+      completedDate: new Date().toISOString(),
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    // Save to ChurchTools
+    const dataValue = {
+      id: Number(sessionId),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedSessionData),
+    };
+    
+    await this.apiClient.updateDataValue(this.moduleId, category.id, sessionId, dataValue);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'stocktake',
+      entityId: sessionId,
+      action: 'updated',
+      newValue: `${String(session.scannedAssets.length)}/${String(session.expectedAssets.length)} assets scanned`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return updatedSessionData;
+  }
+
+  async cancelStockTakeSession(sessionId: string): Promise<void> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getStockTakeCategory();
+    const session = await this.getStockTakeSession(sessionId);
+    
+    // Check if session is still active
+    if (session.status !== 'active') {
+      throw new Error(`Cannot cancel a ${session.status} session`);
+    }
+    
+    const updatedSessionData = {
+      ...session,
+      status: 'cancelled' as StockTakeStatus,
+      completedDate: new Date().toISOString(),
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    // Save to ChurchTools
+    const dataValue = {
+      id: Number(sessionId),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedSessionData),
+    };
+    
+    await this.apiClient.updateDataValue(this.moduleId, category.id, sessionId, dataValue);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'stocktake',
+      entityId: sessionId,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
   }
 
   async getSavedViews(_userId: string): Promise<SavedView[]> {

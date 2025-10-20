@@ -15,15 +15,22 @@ import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useCreateCategory, useUpdateCategory } from '../../hooks/useCategories';
 import { CustomFieldDefinitionInput } from './CustomFieldDefinitionInput';
+import { CustomFieldPreview } from './CustomFieldPreview';
+import { IconPicker } from './IconPicker';
 import type { AssetCategory, CategoryCreate, CustomFieldDefinition } from '../../types/entities';
 
 interface AssetCategoryFormProps {
   category?: AssetCategory;
+  initialData?: {
+    name: string;
+    icon?: string;
+    customFields: Omit<CustomFieldDefinition, 'id'>[];
+  };
   onSuccess?: (category: AssetCategory) => void;
   onCancel?: () => void;
 }
 
-export function AssetCategoryForm({ category, onSuccess, onCancel }: AssetCategoryFormProps) {
+export function AssetCategoryForm({ category, initialData, onSuccess, onCancel }: AssetCategoryFormProps) {
   const isEditing = !!category;
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
@@ -34,9 +41,12 @@ export function AssetCategoryForm({ category, onSuccess, onCancel }: AssetCatego
     customFields: CustomFieldDefinition[];
   }>({
     initialValues: {
-      name: category?.name || '',
-      icon: category?.icon || '',
-      customFields: category?.customFields || [],
+      name: category?.name || initialData?.name || '',
+      icon: category?.icon || initialData?.icon || '',
+      customFields: category?.customFields || (initialData?.customFields.map((field, index) => ({
+        ...field,
+        id: `field-${Date.now().toString()}-${index.toString()}`,
+      }))) || [],
     },
     validate: {
       name: (value) => {
@@ -134,14 +144,21 @@ export function AssetCategoryForm({ category, onSuccess, onCancel }: AssetCatego
           disabled={isPending}
         />
 
-        <TextInput
-          label="Icon (Emoji)"
-          placeholder="🎤"
-          description="Optional emoji to represent this category"
-          {...form.getInputProps('icon')}
-          disabled={isPending}
-          maxLength={2}
-        />
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>
+            Icon
+          </Text>
+          <IconPicker
+            value={form.values.icon}
+            onChange={(value) => {
+              form.setFieldValue('icon', value);
+            }}
+            disabled={isPending}
+          />
+          <Text size="xs" c="dimmed">
+            Optional icon to represent this category
+          </Text>
+        </Stack>
 
         <Divider label="Custom Fields" labelPosition="left" />
 
@@ -186,6 +203,13 @@ export function AssetCategoryForm({ category, onSuccess, onCancel }: AssetCatego
             Add Custom Field
           </Button>
         </Stack>
+
+        {form.values.customFields.length > 0 && (
+          <>
+            <Divider label="Preview" labelPosition="left" mt="xl" />
+            <CustomFieldPreview fields={form.values.customFields} />
+          </>
+        )}
 
         <Group justify="flex-end" mt="xl">
           {onCancel && (

@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 
 /**
+ * Scan history entry
+ */
+interface ScanHistoryEntry {
+    assetNumber: string;
+    assetId: string;
+    assetName: string;
+    scannedAt: string;
+}
+
+/**
  * Scanner State Store
  * Manages barcode/QR scanner state
  */
@@ -20,6 +30,11 @@ interface ScannerState {
         type: 'barcode' | 'qr';
         timestamp: number;
     } | null;
+    
+    // Scan history (last 20 scans)
+    scanHistory: ScanHistoryEntry[];
+    addScan: (entry: ScanHistoryEntry) => void;
+    clearHistory: () => void;
     
     // Actions
     startScanning: () => void;
@@ -49,6 +64,17 @@ export const useScannerStore = create<ScannerState>((set) => ({
     
     // Last scan result
     lastScan: null,
+    
+    // Scan history
+    scanHistory: [],
+    addScan: (entry) => {
+        set((state) => ({
+            scanHistory: [entry, ...state.scanHistory].slice(0, 20), // Keep last 20 scans
+        }));
+    },
+    clearHistory: () => {
+        set({ scanHistory: [] });
+    },
     
     // Actions
     startScanning: () => {
