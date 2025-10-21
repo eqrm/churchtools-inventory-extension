@@ -1,16 +1,19 @@
 /* eslint-disable max-lines-per-function */
 import { useState } from 'react';
-import { Button, Container, Group, Modal, Stack, Title } from '@mantine/core';
+import { Button, Container, Group, Modal, Stack, Title, Grid } from '@mantine/core';
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AssetDetail } from '../components/assets/AssetDetail';
 import { AssetForm } from '../components/assets/AssetForm';
+import { AssetBookingIndicator } from '../components/assets/AssetBookingIndicator';
+import { BookAssetModal } from '../components/bookings/BookAssetModal';
 import { useAsset } from '../hooks/useAssets';
 
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [bookModalOpened, setBookModalOpened] = useState(false);
   const { data: asset } = useAsset(id || '');
 
   const handleEdit = () => {
@@ -53,26 +56,46 @@ export function AssetDetailPage() {
           </Button>
         </Group>
 
-        <AssetDetail assetId={id} onEdit={handleEdit} />
+        <Grid>
+          <Grid.Col span={{ base: 12, md: 8 }}>
+            <AssetDetail assetId={id} onEdit={handleEdit} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            {asset && (
+              <AssetBookingIndicator
+                assetId={id}
+                onBookAsset={() => setBookModalOpened(true)}
+              />
+            )}
+          </Grid.Col>
+        </Grid>
 
         {asset && (
-          <Modal
-            opened={isFormOpen}
-            onClose={handleCancel}
-            title={
-              <Group gap="xs">
-                <IconEdit size={20} />
-                <span>Edit Asset</span>
-              </Group>
-            }
-            size="lg"
-          >
-            <AssetForm
+          <>
+            <Modal
+              opened={isFormOpen}
+              onClose={handleCancel}
+              title={
+                <Group gap="xs">
+                  <IconEdit size={20} />
+                  <span>Edit Asset</span>
+                </Group>
+              }
+              size="lg"
+            >
+              <AssetForm
+                asset={asset}
+                onSuccess={handleSuccess}
+                onCancel={handleCancel}
+              />
+            </Modal>
+
+            <BookAssetModal
+              opened={bookModalOpened}
+              onClose={() => setBookModalOpened(false)}
               asset={asset}
-              onSuccess={handleSuccess}
-              onCancel={handleCancel}
             />
-          </Modal>
+          </>
         )}
       </Stack>
     </Container>

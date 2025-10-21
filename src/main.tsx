@@ -59,16 +59,16 @@ if (import.meta.env.MODE === 'development' && username && password) {
     await churchtoolsClient.post('/login', { username, password });
 }
 
-// TanStack Query client configuration
+// TanStack Query client configuration (T218 - optimized cache times)
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
             // Cache configuration for performance
-            staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
-            gcTime: 30 * 60 * 1000, // 30 minutes - garbage collection time (formerly cacheTime)
-            refetchOnWindowFocus: false, // Don't refetch on window focus
-            refetchOnMount: false, // Don't refetch on component mount if data is fresh
-            retry: 1, // Retry failed requests once
+            staleTime: 2 * 60 * 1000, // 2 minutes - data considered fresh (reduced from 5 for fresher data)
+            gcTime: 10 * 60 * 1000, // 10 minutes - garbage collection time (reduced from 30 to save memory)
+            refetchOnWindowFocus: true, // Refetch on window focus for fresher data
+            refetchOnMount: true, // Refetch on mount to ensure fresh data
+            retry: 2, // Retry failed requests twice (increased for reliability)
             retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
         },
         mutations: {

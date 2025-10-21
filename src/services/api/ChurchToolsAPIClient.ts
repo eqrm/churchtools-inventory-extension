@@ -115,6 +115,21 @@ export class ChurchToolsAPIClient {
     }
 
     /**
+     * Search for people by query string
+     */
+    async searchPeople(query: string): Promise<PersonInfo[]> {
+        const response = await this.get<{ data: Person[] }>(`/persons?search=${encodeURIComponent(query)}`);
+        return response.data.map((person) => ({
+            id: person.id.toString(),
+            firstName: person.firstName,
+            lastName: person.lastName,
+            name: `${person.firstName} ${person.lastName}`.trim(),
+            email: person.email,
+            avatarUrl: person.imageUrl,
+        }));
+    }
+
+    /**
      * Clear person cache
      */
     clearPersonCache(): void {

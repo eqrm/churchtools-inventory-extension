@@ -118,6 +118,34 @@ export function useCreateAsset() {
       // Add to detail cache
       queryClient.setQueryData(assetKeys.detail(newAsset.id), newAsset);
       queryClient.setQueryData(assetKeys.byNumber(newAsset.assetNumber), newAsset);
+      
+      // Invalidate change history for new asset (T262 - E3)
+      void queryClient.invalidateQueries({ queryKey: ['changeHistory', 'asset', newAsset.id] });
+    },
+  });
+}
+
+/**
+ * T094 - US4: Hook to create multiple assets (parent + children)
+ */
+export function useCreateMultiAsset() {
+  const queryClient = useQueryClient();
+  const provider = useStorageProvider();
+
+  return useMutation({
+    mutationFn: async ({data, quantity}: {data: AssetCreate; quantity: number}) => {
+      if (!provider) throw new Error('Storage provider not initialized');
+      return await provider.createMultiAsset(data, quantity);
+    },
+    onSuccess: (newAssets) => {
+      // Invalidate all asset lists to refetch
+      void queryClient.invalidateQueries({ queryKey: assetKeys.lists() });
+      
+      // Add each asset to detail cache
+      newAssets.forEach(asset => {
+        queryClient.setQueryData(assetKeys.detail(asset.id), asset);
+        queryClient.setQueryData(assetKeys.byNumber(asset.assetNumber), asset);
+      });
     },
   });
 }
@@ -159,10 +187,26 @@ export function useUpdateAsset() {
       }
     },
     onSuccess: (updatedAsset) => {
-      // Update caches
-      void queryClient.invalidateQueries({ queryKey: assetKeys.lists() });
+      // Update caches with setQueryData to avoid refetches
       queryClient.setQueryData(assetKeys.detail(updatedAsset.id), updatedAsset);
       queryClient.setQueryData(assetKeys.byNumber(updatedAsset.assetNumber), updatedAsset);
+      
+      // Update asset lists by modifying the cached data directly
+      queryClient.setQueriesData<Asset[]>(
+        { queryKey: assetKeys.lists() },
+        (old) => {
+          if (!old) return old;
+          return old.map((asset) => 
+            asset.id === updatedAsset.id ? updatedAsset : asset
+          );
+        }
+      );
+      
+      // Invalidate change history after update (T262 - E3)
+      // Use a slight delay to avoid race conditions with the update
+      setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['changeHistory', 'asset', updatedAsset.id] });
+      }, 100);
     },
   });
 }
@@ -184,6 +228,43 @@ export function useDeleteAsset() {
       // Remove from all caches
       queryClient.removeQueries({ queryKey: assetKeys.detail(deletedId) });
       void queryClient.invalidateQueries({ queryKey: assetKeys.lists() });
+    },
+  });
+}
+
+/**
+ * T283 - E2: Hook to regenerate asset barcode
+ * Archives old barcode and generates new one
+ */
+export function useRegenerateBarcode() {
+  const queryClient = useQueryClient();
+  const provider = useStorageProvider();
+
+  return useMutation({
+    mutationFn: async ({ id, reason, newBarcode }: { id: string; reason?: string; newBarcode?: string }) => {
+      if (!provider) throw new Error('Storage provider not initialized');
+      return await provider.regenerateAssetBarcode(id, reason, newBarcode);
+    },
+    onSuccess: (updatedAsset) => {
+      // Update caches with new barcode
+      queryClient.setQueryData(assetKeys.detail(updatedAsset.id), updatedAsset);
+      queryClient.setQueryData(assetKeys.byNumber(updatedAsset.assetNumber), updatedAsset);
+      
+      // Update asset lists
+      queryClient.setQueriesData<Asset[]>(
+        { queryKey: assetKeys.lists() },
+        (old) => {
+          if (!old) return old;
+          return old.map((asset) => 
+            asset.id === updatedAsset.id ? updatedAsset : asset
+          );
+        }
+      );
+      
+      // Invalidate change history
+      setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['changeHistory', 'asset', updatedAsset.id] });
+      }, 100);
     },
   });
 }

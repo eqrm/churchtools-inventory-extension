@@ -139,6 +139,16 @@ export interface IStorageProvider {
   deleteAsset(id: string): Promise<void>
   
   /**
+   * T282 - E2: Regenerate barcode for an asset
+   * Archives old barcode and generates new one with timestamp or custom barcode
+   * @param id - Asset ID
+   * @param reason - Optional reason for regeneration
+   * @param customBarcode - Optional custom barcode (if not provided, auto-generates)
+   * @returns Updated asset with new barcode
+   */
+  regenerateAssetBarcode(id: string, reason?: string, customBarcode?: string): Promise<Asset>
+  
+  /**
    * Search assets by name, manufacturer, model, or asset number
    * @param query - Search query string
    * @returns Array of matching assets
@@ -280,11 +290,18 @@ export interface IStorageProvider {
   // ============================================================================
   
   /**
-   * Get maintenance records for an asset
-   * @param assetId - Asset ID
+   * Get maintenance records, optionally filtered by asset
+   * @param assetId - Optional asset ID to filter records
    * @returns Array of maintenance records
    */
-  getMaintenanceRecords(assetId: string): Promise<MaintenanceRecord[]>
+  getMaintenanceRecords(assetId?: string): Promise<MaintenanceRecord[]>
+  
+  /**
+   * Get a single maintenance record by ID
+   * @param id - Record ID
+   * @returns Maintenance record or null if not found
+   */
+  getMaintenanceRecord(id: string): Promise<MaintenanceRecord | null>
   
   /**
    * Create a maintenance record
@@ -295,6 +312,21 @@ export interface IStorageProvider {
   createMaintenanceRecord(record: MaintenanceRecordCreate): Promise<MaintenanceRecord>
   
   /**
+   * Update a maintenance record
+   * @param id - Record ID
+   * @param record - Partial record data to update
+   * @returns Updated maintenance record
+   */
+  updateMaintenanceRecord(id: string, record: Partial<MaintenanceRecord>): Promise<MaintenanceRecord>
+  
+  /**
+   * Get maintenance schedules, optionally filtered by asset
+   * @param assetId - Optional asset ID to filter schedules
+   * @returns Array of maintenance schedules
+   */
+  getMaintenanceSchedules(assetId?: string): Promise<MaintenanceSchedule[]>
+  
+  /**
    * Get maintenance schedule for an asset
    * @param assetId - Asset ID
    * @returns Maintenance schedule or null if not configured
@@ -302,11 +334,31 @@ export interface IStorageProvider {
   getMaintenanceSchedule(assetId: string): Promise<MaintenanceSchedule | null>
   
   /**
-   * Create or update maintenance schedule for an asset
+   * Create a maintenance schedule
    * @param schedule - Maintenance schedule data
-   * @returns Created/updated maintenance schedule
+   * @returns Created maintenance schedule
    */
-  setMaintenanceSchedule(schedule: MaintenanceScheduleCreate): Promise<MaintenanceSchedule>
+  createMaintenanceSchedule(schedule: MaintenanceScheduleCreate): Promise<MaintenanceSchedule>
+  
+  /**
+   * Update a maintenance schedule
+   * @param id - Schedule ID
+   * @param schedule - Partial schedule data to update
+   * @returns Updated maintenance schedule
+   */
+  updateMaintenanceSchedule(id: string, schedule: Partial<MaintenanceSchedule>): Promise<MaintenanceSchedule>
+  
+  /**
+   * Delete a maintenance schedule
+   * @param id - Schedule ID
+   */
+  deleteMaintenanceSchedule(id: string): Promise<void>
+  
+  /**
+   * Get all maintenance schedules that are overdue
+   * @returns Array of overdue maintenance schedules
+   */
+  getOverdueMaintenanceSchedules(): Promise<MaintenanceSchedule[]>
   
   /**
    * Get all assets with overdue maintenance
@@ -458,6 +510,58 @@ export interface IStorageProvider {
    * @returns Array of matching people
    */
   searchPeople(query: string): Promise<PersonInfo[]>
+
+  // ============================================================================
+  // Asset Prefixes (E5 - Multiple Asset Prefixes)
+  // ============================================================================
+
+  /**
+   * Get all asset prefixes
+   * @returns Array of all asset prefixes
+   */
+  getAssetPrefixes(): Promise<import('./entities').AssetPrefix[]>
+
+  /**
+   * Get a single asset prefix by ID
+   * @param id - Prefix ID
+   * @returns Asset prefix
+   */
+  getAssetPrefix(id: string): Promise<import('./entities').AssetPrefix>
+
+  /**
+   * Create a new asset prefix
+   * @param data - Prefix data without ID and sequence
+   * @returns Created asset prefix
+   */
+  createAssetPrefix(
+    data: import('./entities').AssetPrefixCreate
+  ): Promise<import('./entities').AssetPrefix>
+
+  /**
+   * Update an existing asset prefix
+   * @param id - Prefix ID
+   * @param data - Partial prefix data to update
+   * @returns Updated asset prefix
+   */
+  updateAssetPrefix(
+    id: string,
+    data: import('./entities').AssetPrefixUpdate
+  ): Promise<import('./entities').AssetPrefix>
+
+  /**
+   * Delete an asset prefix
+   * Note: Should fail if assets exist with this prefix
+   * @param id - Prefix ID
+   */
+  deleteAssetPrefix(id: string): Promise<void>
+
+  /**
+   * Increment sequence number for a prefix
+   * Called internally when creating an asset with this prefix
+   * @param prefixId - Prefix ID
+   * @returns New sequence number
+   */
+  incrementPrefixSequence(prefixId: string): Promise<number>
 }
 
 /**

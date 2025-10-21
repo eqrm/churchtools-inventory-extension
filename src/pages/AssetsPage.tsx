@@ -1,18 +1,14 @@
 import { useState } from 'react';
 import { Container, Modal, Stack } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { AssetList } from '../components/assets/AssetList';
+import { EnhancedAssetList } from '../components/assets/EnhancedAssetList';
 import { AssetForm } from '../components/assets/AssetForm';
-import { useUIStore } from '../stores/uiStore';
 import type { Asset } from '../types/entities';
 
 export function AssetsPage() {
   const navigate = useNavigate();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | undefined>();
-  
-  // T061: Integrate AssetList with filters from uiStore
-  const assetFilters = useUIStore((state) => state.assetFilters);
 
   const handleView = (asset: Asset) => {
     navigate(`/assets/${asset.id}`);
@@ -41,11 +37,10 @@ export function AssetsPage() {
   return (
     <Container size="xl">
       <Stack gap="md">
-        <AssetList
+        <EnhancedAssetList
           onView={handleView}
           onEdit={handleEdit}
           onCreateNew={handleCreateNew}
-          initialFilters={assetFilters}
         />
 
         <Modal

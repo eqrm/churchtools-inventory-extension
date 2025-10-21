@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AssetFilters } from '../types/entities';
+import type { AssetFilters, ViewMode, ViewFilter } from '../types/entities';
 
 /**
- * UI State Store
- * Manages global UI state (theme, sidebar, modals, filters, etc.)
+ * UI State Store (T213 - Enhanced with view preferences)
+ * Manages global UI state (theme, sidebar, modals, filters, view preferences, etc.)
  */
 interface UIState {
     // Sidebar
@@ -32,7 +32,24 @@ interface UIState {
     clearAssetFilters: () => void;
     updateAssetFilter: <K extends keyof AssetFilters>(key: K, value: AssetFilters[K]) => void;
     
-    // View Preferences
+    // View Preferences (T213 - Phase 11)
+    viewMode: ViewMode;
+    setViewMode: (mode: ViewMode) => void;
+    
+    viewFilters: ViewFilter[];
+    setViewFilters: (filters: ViewFilter[]) => void;
+    clearViewFilters: () => void;
+    
+    sortBy: string | null;
+    setSortBy: (field: string | null) => void;
+    
+    sortDirection: 'asc' | 'desc';
+    setSortDirection: (direction: 'asc' | 'desc') => void;
+    
+    groupBy: string | null;
+    setGroupBy: (field: string | null) => void;
+    
+    // Legacy view mode (kept for backward compatibility)
     assetViewMode: 'table' | 'gallery';
     setAssetViewMode: (mode: 'table' | 'gallery') => void;
     
@@ -88,7 +105,36 @@ export const useUIStore = create<UIState>()(
                 }));
             },
             
-            // View Preferences
+            // View Preferences (T213)
+            viewMode: 'table',
+            setViewMode: (mode) => {
+                set({ viewMode: mode });
+            },
+            
+            viewFilters: [],
+            setViewFilters: (filters) => {
+                set({ viewFilters: filters });
+            },
+            clearViewFilters: () => {
+                set({ viewFilters: [] });
+            },
+            
+            sortBy: null,
+            setSortBy: (field) => {
+                set({ sortBy: field });
+            },
+            
+            sortDirection: 'asc',
+            setSortDirection: (direction) => {
+                set({ sortDirection: direction });
+            },
+            
+            groupBy: null,
+            setGroupBy: (field) => {
+                set({ groupBy: field });
+            },
+            
+            // Legacy view mode (kept for backward compatibility)
             assetViewMode: 'table',
             setAssetViewMode: (mode) => {
                 set({ assetViewMode: mode });
@@ -106,7 +152,14 @@ export const useUIStore = create<UIState>()(
                 colorScheme: state.colorScheme,
                 assetFilters: state.assetFilters,
                 assetViewMode: state.assetViewMode,
+                // T213: Persist view preferences
+                viewMode: state.viewMode,
+                viewFilters: state.viewFilters,
+                sortBy: state.sortBy,
+                sortDirection: state.sortDirection,
+                groupBy: state.groupBy,
             }),
         }
     )
 );
+

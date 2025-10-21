@@ -145,6 +145,11 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
             striped
             highlightOnHover
             records={sortedCategories}
+            onRowClick={({ record }) => {
+              // Default action on row click: Edit category
+              onEdit?.(record);
+            }}
+            rowStyle={() => ({ cursor: 'pointer' })}
             columns={[
               {
                 accessor: 'icon',
@@ -202,7 +207,11 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                   <Group gap={0} justify="flex-end">
                     <Menu position="bottom-end" shadow="md">
                       <Menu.Target>
-                        <ActionIcon variant="subtle" color="gray">
+                        <ActionIcon 
+                          variant="subtle" 
+                          color="gray"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <IconDots size={16} />
                         </ActionIcon>
                       </Menu.Target>
@@ -211,7 +220,8 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                         {onEdit && (
                           <Menu.Item
                             leftSection={<IconEdit size={14} />}
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               onEdit(category);
                             }}
                           >
@@ -220,7 +230,8 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                         )}
                         <Menu.Item
                           leftSection={<IconCopy size={14} />}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             void handleDuplicate(category);
                           }}
                           disabled={duplicateCategory.isPending}
@@ -230,7 +241,8 @@ export function AssetCategoryList({ onEdit }: AssetCategoryListProps) {
                         <Menu.Item
                           color="red"
                           leftSection={<IconTrash size={14} />}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             void handleDelete(category);
                           }}
                           disabled={deleteCategory.isPending}

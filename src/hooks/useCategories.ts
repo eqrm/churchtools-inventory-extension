@@ -15,6 +15,7 @@ export const categoryKeys = {
 
 /**
  * Hook to fetch all asset categories
+ * T266 - E7: Filter out system categories with __ prefix
  */
 export function useCategories() {
   const provider = useStorageProvider();
@@ -23,7 +24,10 @@ export function useCategories() {
     queryKey: categoryKeys.lists(),
     queryFn: async () => {
       if (!provider) throw new Error('Storage provider not initialized');
-      return await provider.getCategories();
+      const allCategories = await provider.getCategories();
+      
+      // T266 - E7: Filter out system categories (e.g., __ChangeHistory__, __StockTakeSessions__)
+      return allCategories.filter(cat => !cat.name.startsWith('__'));
     },
     enabled: !!provider,
     staleTime: 5 * 60 * 1000, // 5 minutes

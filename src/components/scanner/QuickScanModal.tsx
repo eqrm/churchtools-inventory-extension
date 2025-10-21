@@ -33,29 +33,37 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
   const scanShortcut = isMac ? '⌘S' : 'Alt+S';
 
-  const handleScan = (assetNumber: string) => {
+  const handleScan = (scannedCode: string) => {
     if (!storage) {
       provideScanErrorFeedback('Storage provider not available');
       return;
     }
     
-    // Look up asset by number (async wrapped)
-    const promise = storage.getAssetByNumber(assetNumber).then((asset) => {
+    // Look up asset by barcode (async wrapped)
+    const promise = storage.getAssets().then((assets) => {
+      // First try to find by barcode (for reassigned barcodes)
+      let asset = assets.find(a => a.barcode === scannedCode);
+      
+      // Fallback to asset number if not found by barcode
       if (!asset) {
-        provideScanErrorFeedback(`Asset not found: ${assetNumber}`);
+        asset = assets.find(a => a.assetNumber === scannedCode);
+      }
+      
+      if (!asset) {
+        provideScanErrorFeedback(`Asset not found: ${scannedCode}`);
         return;
       }
 
       // Add to scan history
       addScan({
-        assetNumber,
+        assetNumber: scannedCode,
         assetId: asset.id,
         assetName: asset.name,
         scannedAt: new Date().toISOString(),
       });
 
       // Provide success feedback
-      provideScanSuccessFeedback(assetNumber, asset.name);
+      provideScanSuccessFeedback(scannedCode, asset.name);
 
       // Navigate to asset detail
       navigate(`/assets/${asset.id}`);
@@ -101,7 +109,7 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
     >
       <Stack gap="md">
         <Text size="sm" c="dimmed">
-          Scan a barcode/QR code or enter an asset number to quickly view its details
+          Scan a barcode or enter a barcode/asset number to quickly view asset details
         </Text>
 
         {/* Barcode Scanner */}
@@ -115,7 +123,7 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
         {/* Manual Entry Fallback */}
         <ScannerInput
           onScan={handleScan}
-          placeholder="Or enter asset number manually..."
+          placeholder="Or enter barcode/asset number manually..."
           label="Manual Entry"
           buttonText="Lookup"
           autoFocus={false}

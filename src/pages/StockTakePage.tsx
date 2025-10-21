@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Box, Button, Card, Group, Modal, Stack, Text, Title } from '@mantine/core';
-import { IconPlus, IconQrcode, IconCheck } from '@tabler/icons-react';
+import { useState, useMemo } from 'react';
+import { Box, Button, Card, Checkbox, Group, Modal, Stack, Text, TextInput, Title, Select } from '@mantine/core';
+import { IconPlus, IconQrcode, IconCheck, IconAlertTriangle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { StockTakeSessionList } from '../components/stocktake/StockTakeSessionList';
 import { StartStockTakeForm } from '../components/stocktake/StartStockTakeForm';
@@ -11,7 +11,9 @@ import { BarcodeScanner } from '../components/scanner/BarcodeScanner';
 import { useStockTakeSession, useAddStockTakeScan, useCompleteStockTakeSession } from '../hooks/useStockTake';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useStorageProvider } from '../hooks/useStorageProvider';
-import type { StockTakeSession } from '../types/entities';
+import { EdgeCaseError } from '../types/edge-cases';
+import { formatDistanceToNow } from '../utils/formatters';
+import type { StockTakeSession, AssetStatus } from '../types/entities';
 
 /**
  * StockTakePage - Main page for stock take management
@@ -22,6 +24,12 @@ import type { StockTakeSession } from '../types/entities';
  * - View session details
  * - Continue active sessions
  * - View completed session reports
+ * 
+ * Enhanced for E6:
+ * - T277: Dynamic field selection toggles in scanner view
+ * - T278: Current values inputs for selected fields
+ * - T279: Selective field updates based on toggles
+ * - T280: Value change UI with notifications
  */
 /* eslint-disable max-lines-per-function */
 export function StockTakePage() {
@@ -29,6 +37,23 @@ export function StockTakePage() {
   const [viewingSessionId, setViewingSessionId] = useState<string | null>(null);
   const [scannerActive, setScannerActive] = useState(false);
   const [lastScannedNumber, setLastScannedNumber] = useState<string>('');
+  
+  // E6: Dynamic field update toggles and values (T277-T278)
+  const [updateLocation, setUpdateLocation] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(false);
+  const [updateCondition, setUpdateCondition] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<string>('');
+  const [currentStatus, setCurrentStatus] = useState<AssetStatus | null>(null);
+  const [currentCondition, setCurrentCondition] = useState<string>('');
+
+  // Load available locations from localStorage (for location dropdown)
+  const availableLocations = useMemo(() => {
+    const savedLocations = JSON.parse(
+      localStorage.getItem('assetLocations') || '[]'
+    ) as Array<{ name: string }>;
+    
+    return savedLocations.map((loc) => ({ value: loc.name, label: loc.name }));
+  }, []);
 
   // Fetch selected session details
   const { data: viewingSession } = useStockTakeSession(viewingSessionId || '');
@@ -55,18 +80,56 @@ export function StockTakePage() {
 
     setLastScannedNumber(scannedValue);
 
-    // Look up asset by number and add to session
+    // E6: Prepare field updates based on dynamic toggles (T279)
+    const fieldUpdates: Record<string, unknown> = {};
+    const changedFields: string[] = [];
+    
+    if (updateLocation && currentLocation) {
+      fieldUpdates['location'] = currentLocation;
+    }
+    if (updateStatus && currentStatus) {
+      fieldUpdates['status'] = currentStatus;
+    }
+    if (updateCondition && currentCondition) {
+      fieldUpdates['condition'] = currentCondition;
+    }
+
+    // Look up asset by barcode (or asset number as fallback) and add to session
     // Note: This triggers a query to find the asset, then adds the scan
     const lookupAsset = async () => {
       try {
-        const asset = await storage?.getAssetByNumber(scannedValue);
+        // Get all assets and search by barcode first, then asset number
+        const allAssets = await storage?.getAssets();
+        let asset = allAssets?.find(a => a.barcode === scannedValue);
+        
+        // Fallback to asset number if not found by barcode
+        if (!asset) {
+          asset = allAssets?.find(a => a.assetNumber === scannedValue);
+        }
+        
         if (!asset) {
           notifications.show({
             title: 'Asset Not Found',
-            message: `No asset with number: ${scannedValue}`,
+            message: `No asset with barcode/number: ${scannedValue}`,
             color: 'orange',
           });
           return;
+        }
+
+        // Track which fields are changing for notification (T280)
+        if (updateLocation && currentLocation && asset.location !== currentLocation) {
+          changedFields.push(`location: ${asset.location || '(empty)'} → ${currentLocation}`);
+        }
+        if (updateStatus && currentStatus && asset.status !== currentStatus) {
+          changedFields.push(`status: ${asset.status} → ${currentStatus}`);
+        }
+        if (updateCondition && currentCondition) {
+          changedFields.push(`condition: updated`);
+        }
+
+        // Apply field updates to asset if any fields are selected
+        if (Object.keys(fieldUpdates).length > 0) {
+          await storage?.updateAsset(asset.id, fieldUpdates);
         }
 
         // Add scan to session
@@ -75,18 +138,37 @@ export function StockTakePage() {
             sessionId: viewingSession.id,
             assetId: asset.id,
             scannedBy: currentUser.id,
-            location: asset.location,
+            location: currentLocation || asset.location,
           },
           {
             onSuccess: () => {
+              // E6: Enhanced notification with field changes (T280)
+              const message = changedFields.length > 0
+                ? `${asset.name} (${asset.assetNumber})\n${changedFields.join(', ')}`
+                : `${asset.name} (${asset.assetNumber})`;
+              
               notifications.show({
                 title: 'Asset Scanned',
-                message: `${asset.name} (${asset.assetNumber})`,
+                message,
                 color: 'green',
                 icon: <IconCheck size={16} />,
               });
             },
             onError: (error) => {
+              // T241b: Enhanced duplicate scan error handling with timestamp
+              if (error instanceof EdgeCaseError && error.duplicateScan) {
+                const timeAgo = formatDistanceToNow(error.duplicateScan.scannedAt);
+                notifications.show({
+                  title: 'Already Scanned',
+                  message: `${error.duplicateScan.assetNumber} was already scanned ${timeAgo} by ${error.duplicateScan.scannedBy}`,
+                  color: 'yellow',
+                  icon: <IconAlertTriangle size={16} />,
+                  autoClose: 5000,
+                });
+                return;
+              }
+              
+              // Generic error handling
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
               notifications.show({
                 title: 'Scan Failed',
@@ -209,6 +291,79 @@ export function StockTakePage() {
                           </Text>
                         )}
                       </Group>
+                      
+                      {/* E6: Dynamic field update controls (T277-T278) */}
+                      <Card withBorder padding="sm" bg="gray.0">
+                        <Stack gap="md">
+                          <Text size="sm" fw={500}>Update Fields During Scan</Text>
+                          
+                          <Stack gap="xs">
+                            <Checkbox
+                              label="Update Location"
+                              checked={updateLocation}
+                              onChange={(e) => setUpdateLocation(e.currentTarget.checked)}
+                            />
+                            {updateLocation && (
+                              <Select
+                                placeholder="Select or type location..."
+                                value={currentLocation}
+                                onChange={(value) => setCurrentLocation(value || '')}
+                                searchable
+                                allowDeselect
+                                data={availableLocations}
+                                onSearchChange={(query) => {
+                                  // Allow typing custom location
+                                  if (query && !currentLocation) {
+                                    setCurrentLocation(query);
+                                  }
+                                }}
+                                size="sm"
+                              />
+                            )}
+                          </Stack>
+                          
+                          <Stack gap="xs">
+                            <Checkbox
+                              label="Update Status"
+                              checked={updateStatus}
+                              onChange={(e) => setUpdateStatus(e.currentTarget.checked)}
+                            />
+                            {updateStatus && (
+                              <Select
+                                placeholder="Select status..."
+                                value={currentStatus}
+                                onChange={(value) => setCurrentStatus(value as AssetStatus)}
+                                data={[
+                                  { value: 'available', label: 'Available' },
+                                  { value: 'in-use', label: 'In Use' },
+                                  { value: 'maintenance', label: 'Maintenance' },
+                                  { value: 'broken', label: 'Broken' },
+                                  { value: 'lost', label: 'Lost' },
+                                  { value: 'retired', label: 'Retired' },
+                                ]}
+                                size="sm"
+                              />
+                            )}
+                          </Stack>
+                          
+                          <Stack gap="xs">
+                            <Checkbox
+                              label="Update Condition Notes"
+                              checked={updateCondition}
+                              onChange={(e) => setUpdateCondition(e.currentTarget.checked)}
+                            />
+                            {updateCondition && (
+                              <TextInput
+                                placeholder="Enter condition notes..."
+                                value={currentCondition}
+                                onChange={(e) => setCurrentCondition(e.currentTarget.value)}
+                                size="sm"
+                              />
+                            )}
+                          </Stack>
+                        </Stack>
+                      </Card>
+                      
                       <Box style={{ minHeight: 200 }}>
                         <BarcodeScanner
                           onScan={handleScan}
@@ -233,12 +388,7 @@ export function StockTakePage() {
           </Stack>
         ) : (
           /* Session List View */
-          <StockTakeSessionList
-            onView={handleViewSession}
-            onCreateNew={() => {
-              setCreateModalOpened(true);
-            }}
-          />
+          <StockTakeSessionList onView={handleViewSession} />
         )}
       </Stack>
 

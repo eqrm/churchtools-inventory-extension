@@ -87,6 +87,18 @@ export type CustomFieldValue = string | number | boolean | string[]
 // Asset
 // ============================================================================
 
+/**
+ * Barcode history entry for tracking barcode regeneration
+ * @enhancement E2 - Asset Barcode Regeneration
+ */
+export interface BarcodeHistoryEntry {
+  barcode: string
+  generatedAt: ISOTimestamp
+  generatedBy: string
+  generatedByName: string
+  reason?: string
+}
+
 export interface Asset {
   id: UUID
   assetNumber: string
@@ -111,6 +123,7 @@ export interface Asset {
   childAssetIds?: UUID[]
   barcode: string
   qrCode: string
+  barcodeHistory?: BarcodeHistoryEntry[]
   customFieldValues: Record<string, CustomFieldValue>
   createdBy: string
   createdByName: string
@@ -150,7 +163,8 @@ export type AssetCreate = Omit<
   | 'nextMaintenance'
 > & {
   assetNumber?: string  // Optional: will be generated if not provided
-  prefix?: string       // Optional: prefix for asset number generation
+  prefix?: string       // Optional: prefix for asset number generation (legacy)
+  prefixId?: string     // T272: ID of the AssetPrefix to use for numbering
 }
 
 export type AssetUpdate = Partial<Omit<Asset, 'id' | 'assetNumber' | 'createdBy' | 'createdByName' | 'createdAt'>>
@@ -171,7 +185,7 @@ export interface AssetFilters {
 
 export interface Booking {
   id: UUID
-  asset: {
+  asset?: {
     id: UUID
     assetNumber: string
     name: string
@@ -419,15 +433,30 @@ export type StockTakeSessionCreate = Omit<
 // Change History / Audit Trail
 // ============================================================================
 
+/**
+ * Individual field change for granular change history
+ * @enhancement E3 - Human-Readable Change History
+ */
+export interface FieldChange {
+  field: string
+  oldValue: string
+  newValue: string
+}
+
 export interface ChangeHistoryEntry {
   id: UUID
-  entityType: 'asset' | 'category' | 'booking' | 'kit' | 'maintenance' | 'stocktake'
+  entityType: 'asset' | 'category' | 'booking' | 'kit' | 'maintenance' | 'stocktake' | 'asset-prefix'
   entityId: UUID
   entityName?: string
   action: ChangeAction
+  /** @deprecated Use changes array instead for better readability */
   fieldName?: string
+  /** @deprecated Use changes array instead for better readability */
   oldValue?: string
+  /** @deprecated Use changes array instead for better readability */
   newValue?: string
+  /** Granular field changes for human-readable history (E3) */
+  changes?: FieldChange[]
   changedBy: string
   changedByName: string
   changedAt: ISOTimestamp
@@ -558,6 +587,83 @@ export interface CustomDataValue {
   id: number
   categoryId: number
   [key: string]: unknown  // Dynamic properties based on category
+}
+
+// ============================================================================
+// Scanner Configuration
+// ============================================================================
+
+/**
+ * Represents a barcode function that can be configured on a scanner
+ * Each function has a name, description, and configuration barcode
+ */
+export interface ScannerFunction {
+  id: UUID
+  name: string
+  description: string
+  configBarcode: string // The barcode to scan to enable this function
+  category: 'prefix' | 'suffix' | 'formatting' | 'behavior' | 'other'
+}
+
+/**
+ * Represents a barcode scanner model with its supported functions
+ * Stores configuration image and available setup functions
+ */
+export interface ScannerModel {
+  id: UUID
+  manufacturer: string
+  modelName: string
+  modelNumber?: string
+  description?: string
+  imageBase64?: string // Base64 encoded image of the scanner
+  supportedFunctions: ScannerFunction[]
+  createdAt: ISOTimestamp
+  lastModifiedAt: ISOTimestamp
+}
+
+export type ScannerModelCreate = Omit<
+  ScannerModel,
+  'id' | 'createdAt' | 'lastModifiedAt'
+>
+
+export type ScannerModelUpdate = Partial<ScannerModelCreate>
+
+// ============================================================================
+// Asset Prefix (E5 - Multiple Asset Prefixes)
+// ============================================================================
+
+/**
+ * Asset prefix configuration for organizing assets by type
+ * Allows multiple independent numbering sequences
+ */
+export interface AssetPrefix {
+  id: UUID
+  prefix: string // e.g., "CAM", "AUD", "MIC"
+  description: string // e.g., "Camera Equipment"
+  color: string // Hex color for visual distinction, e.g., "#3B82F6"
+  sequence: number // Current sequence number (e.g., 42 for CAM-042)
+  createdBy: string
+  createdByName: string
+  createdAt: ISOTimestamp
+  lastModifiedBy: string
+  lastModifiedByName: string
+  lastModifiedAt: ISOTimestamp
+}
+
+export type AssetPrefixCreate = Omit<
+  AssetPrefix,
+  | 'id'
+  | 'sequence'
+  | 'createdBy'
+  | 'createdByName'
+  | 'createdAt'
+  | 'lastModifiedBy'
+  | 'lastModifiedByName'
+  | 'lastModifiedAt'
+>
+
+export type AssetPrefixUpdate = Partial<AssetPrefixCreate> & {
+  sequence?: number // Allow updating sequence internally
 }
 
 // ============================================================================

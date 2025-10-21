@@ -1,21 +1,26 @@
 /* eslint-disable max-lines-per-function */
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Button,
   Card,
+  Checkbox,
   Grid,
   Group,
+  NumberInput,
   Select,
   Stack,
   Textarea,
   TextInput,
   Title,
+  Badge,
+  Text,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 import { useCategories, useCategory } from '../../hooks/useCategories';
-import { useCreateAsset, useUpdateAsset } from '../../hooks/useAssets';
+import { useCreateAsset, useCreateMultiAsset, useUpdateAsset } from '../../hooks/useAssets';
+import { useAssetPrefixes } from '../../hooks/useAssetPrefixes';
 import { CustomFieldInput } from './CustomFieldInput';
 import type { Asset, AssetCreate, AssetStatus, CustomFieldValue } from '../../types/entities';
 import { validateCustomFieldValue } from '../../utils/validators';
@@ -32,9 +37,12 @@ interface AssetFormValues {
   model?: string;
   description?: string;
   categoryId: string;
+  prefixId?: string; // T272: Asset prefix selection
   status: AssetStatus;
   location?: string;
   parentAssetId?: string;
+  isParent: boolean;
+  quantity: number;
   customFieldValues: Record<string, CustomFieldValue>;
 }
 
@@ -51,7 +59,9 @@ const STATUS_OPTIONS: { value: AssetStatus; label: string }[] = [
 export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
   const isEditing = Boolean(asset);
   const { data: categories = [] } = useCategories();
+  const { data: prefixes = [] } = useAssetPrefixes();
   const createAsset = useCreateAsset();
+  const createMultiAsset = useCreateMultiAsset();
   const updateAsset = useUpdateAsset();
 
   const form = useForm<AssetFormValues>({
@@ -61,9 +71,12 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       model: asset?.model || '',
       description: asset?.description || '',
       categoryId: asset?.category.id || '',
+      prefixId: '', // Default to first prefix or empty
       status: asset?.status || 'available',
       location: asset?.location || '',
       parentAssetId: asset?.parentAssetId || '',
+      isParent: asset?.isParent || false,
+      quantity: 1,
       customFieldValues: asset?.customFieldValues || {},
     },
     validate: {
@@ -155,7 +168,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
           onSuccess(updated);
         }
       } else {
-        // Create new asset
+        // Create new asset(s)
         const categoryName = categories.find(c => c.id === values.categoryId)?.name || '';
         
         const newAssetData: AssetCreate = {
@@ -169,25 +182,49 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
           },
           status: values.status,
           location: values.location || undefined,
-          isParent: false,
+          isParent: values.isParent,
           parentAssetId: values.parentAssetId || undefined,
           childAssetIds: [],
           customFieldValues: values.customFieldValues,
+          prefixId: values.prefixId || undefined, // T272: Pass selected prefix
         };
 
-        const created = await createAsset.mutateAsync(newAssetData);
+        // T092-T096: Handle multi-asset creation
+        if (values.isParent && values.quantity >= 2) {
+          const createdAssets = await createMultiAsset.mutateAsync({
+            data: newAssetData,
+            quantity: values.quantity,
+          });
 
-        notifications.show({
-          title: 'Success',
-          message: `Asset "${values.name}" has been created with number ${created.assetNumber}`,
-          color: 'green',
-        });
+          const parentAsset = createdAssets[0];
+          if (!parentAsset) {
+            throw new Error('Failed to create parent asset');
+          }
 
-        if (onSuccess) {
-          onSuccess(created);
+          notifications.show({
+            title: 'Success',
+            message: `Created parent asset "${values.name}" with ${values.quantity} children (${parentAsset.assetNumber})`,
+            color: 'green',
+          });
+
+          if (onSuccess) {
+            onSuccess(parentAsset);
+          }
         } else {
-          // Reset form for creating another asset
-          form.reset();
+          const created = await createAsset.mutateAsync(newAssetData);
+
+          notifications.show({
+            title: 'Success',
+            message: `Asset "${values.name}" has been created with number ${created.assetNumber}`,
+            color: 'green',
+          });
+
+          if (onSuccess) {
+            onSuccess(created);
+          } else {
+            // Reset form for creating another asset
+            form.reset();
+          }
         }
       }
     } catch (error) {
@@ -235,6 +272,40 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
               />
             </Grid.Col>
 
+            {/* T272: Asset Prefix Selector */}
+            {!isEditing && prefixes.length > 0 && (
+              <Grid.Col span={{ base: 12, md: 6 }}>
+                <Select
+                  label="Asset Prefix"
+                  placeholder="Select prefix"
+                  description={
+                    form.values.prefixId
+                      ? (() => {
+                          const selectedPrefix = prefixes.find(p => p.id === form.values.prefixId);
+                          if (selectedPrefix) {
+                            const nextNumber = String(selectedPrefix.sequence + 1).padStart(3, '0');
+                            return (
+                              <Group gap="xs">
+                                <Text size="xs" c="dimmed">Next asset number:</Text>
+                                <Badge color={selectedPrefix.color} size="sm">
+                                  {selectedPrefix.prefix}-{nextNumber}
+                                </Badge>
+                              </Group>
+                            );
+                          }
+                          return null;
+                        })()
+                      : 'Choose a prefix for this asset\'s numbering sequence'
+                  }
+                  data={prefixes.map(prefix => ({
+                    value: prefix.id,
+                    label: `${prefix.prefix} - ${prefix.description}`,
+                  }))}
+                  {...form.getInputProps('prefixId')}
+                />
+              </Grid.Col>
+            )}
+
             <Grid.Col span={{ base: 12, md: 6 }}>
               <Select
                 label="Status"
@@ -246,9 +317,26 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <TextInput
+              <Select
                 label="Location"
-                placeholder="Where is this asset located?"
+                placeholder="Select or type location"
+                description="Choose from pre-defined locations or type a new one and press Enter"
+                searchable
+                allowDeselect
+                data={useMemo(() => {
+                  // Get locations from localStorage
+                  const savedLocations = JSON.parse(
+                    localStorage.getItem('assetLocations') || '[]'
+                  ) as Array<{ name: string }>;
+                  
+                  return savedLocations.map((loc) => ({ value: loc.name, label: loc.name }));
+                }, [])}
+                onSearchChange={(query) => {
+                  // Allow typing custom location
+                  if (query && !form.values.location) {
+                    form.setFieldValue('location', query);
+                  }
+                }}
                 {...form.getInputProps('location')}
               />
             </Grid.Col>
@@ -277,6 +365,32 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                 {...form.getInputProps('description')}
               />
             </Grid.Col>
+
+            {/* T092: Parent Asset Checkbox */}
+            {!isEditing && (
+              <Grid.Col span={12}>
+                <Checkbox
+                  label="Create as parent asset with multiple children"
+                  description="Check this to create multiple identical assets at once"
+                  {...form.getInputProps('isParent', { type: 'checkbox' })}
+                />
+              </Grid.Col>
+            )}
+
+            {/* T093: Quantity Field (visible when isParent is true) */}
+            {!isEditing && form.values.isParent && (
+              <Grid.Col span={{ base: 12, md: 6 }}>
+                <NumberInput
+                  label="Quantity"
+                  description="Number of child assets to create"
+                  placeholder="Enter quantity"
+                  min={2}
+                  max={100}
+                  required
+                  {...form.getInputProps('quantity')}
+                />
+              </Grid.Col>
+            )}
           </Grid>
 
           {/* Custom Fields */}

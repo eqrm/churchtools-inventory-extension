@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import {
   ActionIcon,
   Popover,
@@ -58,23 +58,20 @@ interface IconPickerProps {
 
 type IconType = typeof COMMON_ICONS[number];
 
-function IconPickerButton({
-  selectedIcon,
-  value,
-  disabled,
-  onClick,
-  onClear,
-}: {
-  selectedIcon?: IconType;
-  value?: string;
-  disabled?: boolean;
-  onClick: () => void;
-  onClear: () => void;
-}) {
+const IconPickerButton = forwardRef<
+  HTMLDivElement,
+  {
+    selectedIcon?: IconType;
+    value?: string;
+    disabled?: boolean;
+    onClick: () => void;
+    onClear: () => void;
+  }
+>(({ selectedIcon, value, disabled, onClick, onClear }, ref) => {
   const SelectedIconComponent = selectedIcon?.Icon;
   
   return (
-    <Group gap="xs">
+    <Group gap="xs" ref={ref}>
       <ActionIcon
         variant="default"
         size="lg"
@@ -105,7 +102,9 @@ function IconPickerButton({
       )}
     </Group>
   );
-}
+});
+
+IconPickerButton.displayName = 'IconPickerButton';
 
 function IconGrid({
   filteredIcons,

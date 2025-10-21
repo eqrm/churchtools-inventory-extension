@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
-import { IconCamera, IconKeyboard, IconX } from '@tabler/icons-react';
+import { IconCamera, IconKeyboard, IconSettings, IconX } from '@tabler/icons-react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { ScannerSetupModal } from './ScannerSetupModal';
+import type { ScannerModel } from '../../types/entities';
 
 interface BarcodeScannerProps {
   onScan: (value: string) => void;
@@ -9,6 +11,7 @@ interface BarcodeScannerProps {
   onClose?: () => void;
   enableCamera?: boolean;
   enableKeyboard?: boolean;
+  showSetupButton?: boolean;
 }
 
 type ScanMode = 'keyboard' | 'camera';
@@ -30,12 +33,81 @@ export function BarcodeScanner({
   onClose,
   enableCamera = true,
   enableKeyboard = true,
+  showSetupButton = true,
 }: BarcodeScannerProps) {
   const [mode, setMode] = useState<ScanMode>('keyboard');
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ScannerModel | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const bufferRef = useRef<string>('');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastScanRef = useRef<{ value: string; timestamp: number } | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  // Load scanner models from localStorage
+  const loadScannerModels = (): ScannerModel[] => {
+    try {
+      const stored = localStorage.getItem('scannerModels')
+      return stored ? (JSON.parse(stored) as ScannerModel[]) : []
+    } catch {
+      return []
+    }
+  }
+
+  const handleOpenSetup = () => {
+    const models = loadScannerModels()
+    if (models.length > 0 && models[0]) {
+      setSelectedModel(models[0])
+      setSetupModalOpen(true)
+    }
+  }
+
+  // Play success beep sound
+  const playSuccessBeep = () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.value = 800; // High pitch beep
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.1);
+    } catch (err) {
+      console.error('Audio playback error:', err);
+    }
+  };
+
+  // Debounced scan handler - prevents duplicate scans within 1 second
+  const handleScanWithDebounce = useCallback((value: string) => {
+    const now = Date.now();
+    
+    // Check if this is a duplicate scan within 1 second
+    if (lastScanRef.current && 
+        lastScanRef.current.value === value && 
+        now - lastScanRef.current.timestamp < 1000) {
+      return; // Ignore duplicate
+    }
+    
+    // Update last scan reference
+    lastScanRef.current = { value, timestamp: now };
+    
+    // Play success sound
+    playSuccessBeep();
+    
+    // Call the original onScan handler
+    onScan(value);
+  }, [onScan]);
 
   // Keyboard scanning mode
   useEffect(() => {
@@ -65,7 +137,7 @@ export function BarcodeScanner({
         }
 
         if (scannedValue.length > 0) {
-          onScan(scannedValue);
+          handleScanWithDebounce(scannedValue);
         }
         return;
       }
@@ -84,7 +156,7 @@ export function BarcodeScanner({
           
           // Only submit if we have a reasonable barcode length (typically 8+ characters)
           if (scannedValue.length >= 5) {
-            onScan(scannedValue);
+            handleScanWithDebounce(scannedValue);
           }
         }, 100);
       }
@@ -98,7 +170,7 @@ export function BarcodeScanner({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [mode, enableKeyboard, onScan]);
+  }, [mode, enableKeyboard, handleScanWithDebounce]);
 
   // Camera scanning mode
   const startCamera = async () => {
@@ -118,8 +190,11 @@ export function BarcodeScanner({
           qrbox: { width: 250, height: 250 },
         },
         (decodedText) => {
-          onScan(decodedText);
-          void stopCamera(); // Stop camera after successful scan
+          handleScanWithDebounce(decodedText);
+          // Stop camera after successful scan (with slight delay to allow beep to play)
+          setTimeout(() => {
+            void stopCamera();
+          }, 200);
         },
         () => {
           // Ignore frequent scanning errors during active scanning
@@ -170,41 +245,53 @@ export function BarcodeScanner({
   };
 
   return (
-    <Stack gap="md">
-      {/* Mode selector */}
-      <Group justify="space-between">
-        <Group>
-          {enableKeyboard && (
-            <Button
-              variant={mode === 'keyboard' ? 'filled' : 'light'}
-              leftSection={<IconKeyboard size={16} />}
-              onClick={handleKeyboardMode}
-              disabled={mode === 'keyboard'}
-            >
-              USB Scanner
-            </Button>
-          )}
-          {enableCamera && (
-            <Button
-              variant={mode === 'camera' ? 'filled' : 'light'}
-              leftSection={<IconCamera size={16} />}
-              onClick={handleCameraMode}
-              disabled={isCameraActive}
-            >
-              Camera
-            </Button>
-          )}
+    <>
+      <Stack gap="md">
+        {/* Mode selector */}
+        <Group justify="space-between">
+          <Group>
+            {enableKeyboard && (
+              <Button
+                variant={mode === 'keyboard' ? 'filled' : 'light'}
+                leftSection={<IconKeyboard size={16} />}
+                onClick={handleKeyboardMode}
+                disabled={mode === 'keyboard'}
+              >
+                USB Scanner
+              </Button>
+            )}
+            {enableCamera && (
+              <Button
+                variant={mode === 'camera' ? 'filled' : 'light'}
+                leftSection={<IconCamera size={16} />}
+                onClick={handleCameraMode}
+                disabled={isCameraActive}
+              >
+                Camera
+              </Button>
+            )}
+          </Group>
+          <Group>
+            {showSetupButton && loadScannerModels().length > 0 && (
+              <Button
+                variant="light"
+                leftSection={<IconSettings size={16} />}
+                onClick={handleOpenSetup}
+              >
+                Scanner Setup
+              </Button>
+            )}
+            {onClose && (
+              <Button
+                variant="subtle"
+                leftSection={<IconX size={16} />}
+                onClick={onClose}
+              >
+                Close
+              </Button>
+            )}
+          </Group>
         </Group>
-        {onClose && (
-          <Button
-            variant="subtle"
-            leftSection={<IconX size={16} />}
-            onClick={onClose}
-          >
-            Close
-          </Button>
-        )}
-      </Group>
 
       {/* Scanner area */}
       <Box>
@@ -263,5 +350,12 @@ export function BarcodeScanner({
         )}
       </Box>
     </Stack>
+
+    <ScannerSetupModal
+      opened={setupModalOpen}
+      onClose={() => setSetupModalOpen(false)}
+      model={selectedModel}
+    />
+  </>
   );
 }

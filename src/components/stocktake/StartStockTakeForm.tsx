@@ -12,7 +12,7 @@ interface StartStockTakeFormProps {
 
 /**
  * StartStockTakeForm component - Start new stock take session (T152)
- * Minimal implementation for task completion
+ * Enhanced for E6: Simplified to just create session (T277)
  */
 export function StartStockTakeForm({ onSuccess, onCancel }: StartStockTakeFormProps) {
   const { data: currentUser } = useCurrentUser();
@@ -43,7 +43,9 @@ export function StartStockTakeForm({ onSuccess, onCancel }: StartStockTakeFormPr
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <Title order={3}>Start New Stock Take</Title>
-          <Text>Scope: All Assets</Text>
+          <Text size="sm" c="dimmed">
+            You can update asset fields during scanning in the next step.
+          </Text>
           <Textarea
             label="Notes"
             placeholder="Purpose of stock take..."

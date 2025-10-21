@@ -1,7 +1,8 @@
 /* eslint-disable max-lines-per-function */
-import { Card, Stack, Text, Title } from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
+import { Badge, Card, Group, Stack, Text, Timeline, Title } from '@mantine/core';
 import { useChangeHistory } from '../../hooks/useChangeHistory';
+import { formatChangeEntry, getActionColor } from '../../utils/historyFormatters';
+import { formatFieldName } from '../../utils/historyFormatters';
 import type { ChangeHistoryEntry } from '../../types/entities';
 
 interface ChangeHistoryListProps {
@@ -18,39 +19,6 @@ export function ChangeHistoryList({
   title = 'Change History',
 }: ChangeHistoryListProps) {
   const { data: history = [], isLoading, error } = useChangeHistory(entityId, limit);
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const getActionColor = (action: string) => {
-    switch (action) {
-      case 'created':
-        return 'green';
-      case 'updated':
-      case 'status-changed':
-        return 'blue';
-      case 'deleted':
-        return 'red';
-      case 'booked':
-      case 'checked-out':
-        return 'cyan';
-      case 'checked-in':
-        return 'teal';
-      case 'maintenance-performed':
-        return 'orange';
-      case 'scanned':
-        return 'violet';
-      default:
-        return 'gray';
-    }
-  };
 
   if (error) {
     return (
@@ -78,75 +46,50 @@ export function ChangeHistoryList({
       <Stack gap="md">
         <Title order={4}>{title}</Title>
         
-        <DataTable
-          withTableBorder
-          borderRadius="sm"
-          striped
-          highlightOnHover
-          records={history}
-          columns={[
-            {
-              accessor: 'changedAt',
-              title: 'Date & Time',
-              width: 160,
-              render: (entry: ChangeHistoryEntry) => (
-                <Text size="xs">{formatDate(entry.changedAt)}</Text>
-              ),
-            },
-            {
-              accessor: 'changedByName',
-              title: 'User',
-              width: 150,
-              render: (entry: ChangeHistoryEntry) => (
-                <Text size="sm">{entry.changedByName}</Text>
-              ),
-            },
-            {
-              accessor: 'action',
-              title: 'Action',
-              width: 140,
-              render: (entry: ChangeHistoryEntry) => (
-                <Text
-                  size="sm"
-                  fw={600}
-                  c={getActionColor(entry.action)}
-                  tt="capitalize"
+        {isLoading ? (
+          <Text size="sm" c="dimmed">Loading history...</Text>
+        ) : (
+          <Timeline active={history.length} bulletSize={24} lineWidth={2}>
+            {history.map((entry: ChangeHistoryEntry) => {
+              const formatted = formatChangeEntry(entry);
+              
+              return (
+                <Timeline.Item
+                  key={entry.id}
+                  color={getActionColor(entry.action)}
+                  title={
+                    <Group gap="xs">
+                      <Badge size="sm" variant="light" color="gray">
+                        {formatted.date}
+                      </Badge>
+                      <Text size="sm">{formatted.text}</Text>
+                    </Group>
+                  }
                 >
-                  {entry.action.replace(/-/g, ' ')}
-                </Text>
-              ),
-            },
-            {
-              accessor: 'fieldName',
-              title: 'Field',
-              width: 120,
-              render: (entry: ChangeHistoryEntry) => (
-                <Text size="sm">{entry.fieldName || '—'}</Text>
-              ),
-            },
-            {
-              accessor: 'oldValue',
-              title: 'Old Value',
-              render: (entry: ChangeHistoryEntry) => (
-                <Text size="xs" c="dimmed" lineClamp={2}>
-                  {entry.oldValue || '—'}
-                </Text>
-              ),
-            },
-            {
-              accessor: 'newValue',
-              title: 'New Value',
-              render: (entry: ChangeHistoryEntry) => (
-                <Text size="xs" lineClamp={2}>
-                  {entry.newValue || '—'}
-                </Text>
-              ),
-            },
-          ]}
-          fetching={isLoading}
-          minHeight={150}
-          noRecordsText={`No change history found for this ${entityType}`}
-        />
+                  {/* Show only the changed values, not what stayed the same */}
+                  {formatted.changes && formatted.changes.length > 0 && (
+                    <Stack gap="xs" mt="xs">
+                      {formatted.changes.map((change, idx) => (
+                        <Group key={idx} gap="xs" wrap="nowrap">
+                          <Text size="xs" c="dimmed" style={{ minWidth: '80px' }}>
+                            {formatFieldName(change.field)}:
+                          </Text>
+                          <Badge size="sm" color="red" variant="light">
+                            {change.oldValue || '(empty)'}
+                          </Badge>
+                          <Text size="xs" c="dimmed">→</Text>
+                          <Badge size="sm" color="green" variant="light">
+                            {change.newValue || '(empty)'}
+                          </Badge>
+                        </Group>
+                      ))}
+                    </Stack>
+                  )}
+                </Timeline.Item>
+              );
+            })}
+          </Timeline>
+        )}
       </Stack>
     </Card>
   );

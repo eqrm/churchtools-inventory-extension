@@ -9,7 +9,15 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ de
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then(m => ({ default: m.CategoriesPage })));
 const AssetsPage = lazy(() => import('./pages/AssetsPage').then(m => ({ default: m.AssetsPage })));
 const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage').then(m => ({ default: m.AssetDetailPage })));
+const BookingsPage = lazy(() => import('./pages/BookingsPage').then(m => ({ default: m.BookingsPage })));
+const BookingDetailPage = lazy(() => import('./pages/BookingDetailPage').then(m => ({ default: m.BookingDetailPage })));
+const BookingCalendarPage = lazy(() => import('./pages/BookingCalendarPage').then(m => ({ default: m.BookingCalendarPage })));
+const KitsPage = lazy(() => import('./pages/KitsPage').then(m => ({ default: m.KitsPage })));
+const KitDetailPage = lazy(() => import('./pages/KitDetailPage').then(m => ({ default: m.KitDetailPage })));
 const StockTakePage = lazy(() => import('./pages/StockTakePage').then(m => ({ default: m.StockTakePage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then(m => ({ default: m.MaintenancePage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 /**
  * Loading fallback component for lazy-loaded routes
@@ -113,7 +121,15 @@ function App() {
               <Route path="/categories" element={<CategoriesPage />} />
               <Route path="/assets" element={<AssetsPage />} />
               <Route path="/assets/:id" element={<AssetDetailPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/bookings/:id" element={<BookingDetailPage />} />
+              <Route path="/bookings-calendar" element={<BookingCalendarPage />} />
+              <Route path="/kits" element={<KitsPage />} />
+              <Route path="/kits/:id" element={<KitDetailPage />} />
               <Route path="/stock-take" element={<StockTakePage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/maintenance" element={<MaintenancePage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

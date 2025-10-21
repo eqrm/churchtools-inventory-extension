@@ -408,40 +408,382 @@ describe('AssetNumberService', () => {
 
 ## Building for Production
 
-### 1. Build the Extension
+### 1. Pre-Deployment Checklist
+
+Before building for production, ensure:
+
+- [ ] All TypeScript compile errors are resolved (`npm run build` succeeds)
+- [ ] Lint warnings are at acceptable levels (`npm run lint`)
+- [ ] Bundle size is under 200 KB gzipped (constitution requirement)
+- [ ] Manual testing completed across browsers (Chrome, Firefox, Safari)
+- [ ] All user stories are implemented and tested
+- [ ] Environment variables are configured correctly
+- [ ] Documentation is up-to-date (user guide, API docs, component docs)
+
+### 2. Build the Extension
 
 ```bash
+# Clean previous builds
+rm -rf dist/
+
 # Compile TypeScript and bundle with Vite
 npm run build
 
 # Output will be in dist/
+# Expected files:
+# - dist/index.html (entry point)
+# - dist/assets/index-[hash].js (main bundle)
+# - dist/assets/index-[hash].css (styles)
+# - dist/assets/*.js (code-split chunks)
 ```
 
-### 2. Verify Bundle Size
+**Build Output Expectations**:
+- Main bundle: ~55 KB gzipped (as of Oct 2025)
+- Mantine UI: ~120 KB gzipped
+- Scanner libraries: ~120 KB gzipped
+- Total initial load: ~165 KB gzipped (well under 200 KB budget)
+
+### 3. Verify Bundle Size
 
 ```bash
 # Check gzipped bundle size
-du -sh dist/*.js | awk '{print $1}'
+du -sh dist/assets/*.js | awk '{print $1}'
 
-# Should be < 200 KB (constitution requirement)
+# Or use build output:
+npm run build 2>&1 | grep "gzip:"
+
+# Should show all chunks under 120 KB gzipped
+# Main bundle should be ~55 KB gzipped
 ```
 
-### 3. Package for Deployment
+**If bundle size exceeds limits**:
+```bash
+# Analyze bundle composition
+npm run build -- --analyze
+
+# Opens interactive bundle analyzer
+# Identify large dependencies and consider:
+# 1. Dynamic imports for heavy features
+# 2. Tree-shaking optimizations
+# 3. Replacing large libraries with smaller alternatives
+```
+
+### 4. Test Production Build Locally
 
 ```bash
-# Run deployment script
-npm run deploy
+# Serve production build locally
+npm run preview
 
-# Creates package in releases/ directory
+# Server starts at http://localhost:4173
+# Test all features in production mode
 ```
 
-### 4. Deploy to ChurchTools
+**Production Testing Checklist**:
+- [ ] Login works correctly
+- [ ] All pages load without errors
+- [ ] Asset CRUD operations work
+- [ ] Barcode scanning works (USB and camera)
+- [ ] Stock take sessions work
+- [ ] Offline mode works (disconnect network, test stock take)
+- [ ] No console errors
+- [ ] Performance is acceptable (initial load < 3s on 3G)
 
-1. Navigate to ChurchTools admin panel
-2. Go to **Extensions** or **Custom Modules**
-3. Upload the packaged extension
-4. Configure module ID and permissions
-5. Update `.env` with `VITE_MODULE_ID`
+### 5. Package for Deployment
+
+```bash
+# Create deployment package
+npm run package
+
+# Or manually:
+cd dist
+zip -r ../churchtools-inventory-v1.0.0.zip .
+cd ..
+
+# Creates: churchtools-inventory-v1.0.0.zip
+```
+
+**Package Contents**:
+```
+churchtools-inventory-v1.0.0.zip
+├── index.html              # Entry point
+├── assets/
+│   ├── index-[hash].js     # Main application bundle
+│   ├── index-[hash].css    # Styles
+│   ├── mantine-[hash].js   # Mantine UI chunk
+│   ├── scanner-[hash].js   # Scanner libraries chunk
+│   └── *.js                # Other code-split chunks
+└── manifest.json           # (if applicable for ChurchTools extensions)
+```
+
+### 6. Deploy to ChurchTools
+
+#### Option A: ChurchTools Custom Module Upload (Recommended)
+
+1. **Access Admin Panel**:
+   - Log in to ChurchTools as administrator
+   - Navigate to: **Administration** → **Settings** → **Custom Modules**
+
+2. **Create New Module**:
+   - Click "Create Module"
+   - Name: "Inventory Management"
+   - Type: "Custom Module"
+   - Visibility: Select permissions (usually "Internal" or specific groups)
+
+3. **Upload Files**:
+   - Upload `index.html` to module root
+   - Upload `assets/` folder contents to module assets directory
+   - Configure module settings:
+     - Set base path
+     - Configure permissions
+     - Note the **Module ID** (you'll need this for `.env`)
+
+4. **Update Module ID**:
+   ```env
+   # Update .env in your project
+   VITE_CHURCHTOOLS_MODULE_ID=<module-id-from-churchtools>
+   ```
+
+5. **Rebuild with Module ID**:
+   ```bash
+   # Rebuild with correct module ID
+   npm run build
+   
+   # Re-upload dist/ contents to ChurchTools
+   ```
+
+#### Option B: Direct File Upload to Web Server
+
+If your ChurchTools instance allows custom file hosting:
+
+1. **Upload to Web Directory**:
+   ```bash
+   # SSH into server
+   ssh user@yourserver.com
+   
+   # Navigate to web root
+   cd /var/www/churchtools/custom-modules/
+   
+   # Create directory
+   mkdir inventory
+   cd inventory
+   
+   # Upload files (from local machine)
+   # Use SCP or SFTP
+   scp -r dist/* user@yourserver.com:/var/www/churchtools/custom-modules/inventory/
+   ```
+
+2. **Configure Web Server**:
+   ```nginx
+   # nginx configuration
+   location /custom-modules/inventory {
+       alias /var/www/churchtools/custom-modules/inventory;
+       try_files $uri $uri/ /custom-modules/inventory/index.html;
+       
+       # Enable gzip compression
+       gzip on;
+       gzip_types text/css application/javascript;
+   }
+   ```
+
+3. **Access Extension**:
+   - URL: `https://your-instance.church.tools/custom-modules/inventory`
+
+### 7. Post-Deployment Configuration
+
+#### Initial Setup in ChurchTools
+
+1. **Create Data Categories** (if not auto-created):
+   - Assets
+   - Asset Categories
+   - Bookings
+   - Kits
+   - Maintenance Schedules
+   - Maintenance Records
+   - Stock Take Sessions
+
+2. **Configure Permissions**:
+   - Asset Managers: Full CRUD access
+   - Regular Users: Read access, create bookings
+   - Maintenance Team: Access to maintenance module
+   - Admin: Full access
+
+3. **Set Up First Category**:
+   - Log in to inventory extension
+   - Create first category (e.g., "Audio Equipment")
+   - Add custom fields if needed
+   - Create first asset to verify everything works
+
+4. **Import Existing Data** (if applicable):
+   - Use CSV import feature (if implemented)
+   - Or create assets manually
+   - Or use ChurchTools API to bulk import
+
+### 8. Rollback Procedure
+
+If deployment fails or issues arise:
+
+```bash
+# Keep previous version backed up
+mv dist/ dist-v1.0.0-backup/
+
+# Restore previous version from backup
+cp -r dist-v0.9.0/ dist/
+
+# Or revert to previous git tag
+git checkout v0.9.0
+npm run build
+
+# Re-upload to ChurchTools
+```
+
+**Rollback Checklist**:
+- [ ] Backup current module files before deployment
+- [ ] Document module ID and settings
+- [ ] Keep database backup (if custom tables used)
+- [ ] Test rollback procedure in staging first
+
+### 9. Monitoring and Maintenance
+
+#### Check Application Health
+
+```bash
+# Monitor JavaScript errors
+# In ChurchTools, check browser console for errors
+
+# Monitor API calls
+# Check ChurchTools API logs for errors
+
+# Monitor performance
+# Use browser Performance tab
+# Check initial load time < 3 seconds
+```
+
+#### Regular Maintenance Tasks
+
+**Weekly**:
+- [ ] Check for JavaScript errors in browser console
+- [ ] Verify no broken features reported by users
+- [ ] Check API error rates in ChurchTools logs
+
+**Monthly**:
+- [ ] Review bundle size (should stay under 200 KB)
+- [ ] Update dependencies: `npm update`
+- [ ] Check for security vulnerabilities: `npm audit`
+- [ ] Review performance metrics
+
+**Quarterly**:
+- [ ] Major dependency updates: `npm outdated`
+- [ ] Review and refactor deprecated code
+- [ ] Performance optimization pass
+- [ ] User feedback review and feature planning
+
+### 10. Troubleshooting Production Issues
+
+#### Issue: Extension doesn't load in ChurchTools
+
+**Symptoms**: Blank page, 404 errors
+
+**Solutions**:
+1. Verify files uploaded correctly to ChurchTools
+2. Check module base path configuration
+3. Verify index.html is in correct location
+4. Check browser console for 404 errors
+5. Ensure assets/ path is correct in index.html
+
+#### Issue: API calls fail with CORS errors
+
+**Symptoms**: Network errors, CORS policy violations
+
+**Solutions**:
+1. Verify production domain is in ChurchTools CORS whitelist
+2. Check API base URL is correct (not localhost)
+3. Verify authentication token is valid
+4. Check ChurchTools API permissions for module
+
+#### Issue: Performance degradation over time
+
+**Symptoms**: Slow page loads, unresponsive UI
+
+**Solutions**:
+1. Clear TanStack Query cache: Refresh page
+2. Check for memory leaks: Use Chrome Memory profiler
+3. Review slow API calls: Use Network tab
+4. Consider pagination if dataset is large
+
+#### Issue: Users can't see inventory data
+
+**Symptoms**: Empty lists, permission errors
+
+**Solutions**:
+1. Verify user has permissions in ChurchTools
+2. Check module visibility settings
+3. Verify data exists in correct categories
+4. Check API authentication is working
+
+### 11. Version Management
+
+**Versioning Strategy** (follow semantic versioning):
+- `v1.0.0` - Initial production release
+- `v1.0.1` - Bug fixes only
+- `v1.1.0` - New features, backward compatible
+- `v2.0.0` - Breaking changes
+
+**Tagging Releases**:
+```bash
+# Tag current version
+git tag -a v1.0.0 -m "Production release v1.0.0"
+git push origin v1.0.0
+
+# Update version in package.json
+npm version patch  # 1.0.0 -> 1.0.1
+npm version minor  # 1.0.0 -> 1.1.0
+npm version major  # 1.0.0 -> 2.0.0
+```
+
+**Release Notes Template**:
+```markdown
+## v1.0.0 - 2025-10-21
+
+### Features
+- Complete asset management system
+- Barcode scanning (USB and camera)
+- Booking calendar with conflict detection
+- Stock take sessions with offline support
+- Maintenance scheduling
+
+### Bug Fixes
+- Fixed issue #123: Asset deletion validation
+- Fixed issue #124: Duplicate scan prevention
+
+### Performance
+- Bundle size: 55.72 KB gzipped (main)
+- Initial load: <3 seconds on 3G
+- Lighthouse score: 95+
+
+### Breaking Changes
+- None (initial release)
+```
+
+---
+
+## Deployment Environments
+
+### Development
+- **URL**: http://localhost:5173
+- **Purpose**: Active development with HMR
+- **Data**: Test data in development ChurchTools instance
+
+### Staging (Optional)
+- **URL**: https://staging.your-church.org/inventory
+- **Purpose**: Pre-production testing
+- **Data**: Copy of production data (anonymized)
+- **Testing**: Full integration testing, user acceptance testing
+
+### Production
+- **URL**: https://your-church.org/inventory
+- **Purpose**: Live production environment
+- **Data**: Real church inventory data
+- **Monitoring**: Error tracking, performance monitoring
 
 ---
 

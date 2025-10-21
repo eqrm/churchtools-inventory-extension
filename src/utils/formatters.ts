@@ -1,4 +1,5 @@
-import { format as formatDate } from 'date-fns';
+import { format as formatDate, formatDistanceToNow as formatDistanceToNowFn } from 'date-fns';
+import { de } from 'date-fns/locale';
 import type { AssetStatus, BookingStatus } from '../types/entities';
 
 /**
@@ -17,6 +18,15 @@ export function formatDateOnly(date: string | Date | null | undefined): string {
     if (!date) return 'N/A';
     const dateObj = typeof date === 'string' ? new Date(date) : date;
     return formatDate(dateObj, 'dd.MM.yyyy');
+}
+
+/**
+ * Format relative time distance (e.g., "5 minutes ago", "2 hours ago")
+ */
+export function formatDistanceToNow(date: string | Date | null | undefined): string {
+    if (!date) return 'N/A';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return formatDistanceToNowFn(dateObj, { addSuffix: true, locale: de });
 }
 
 /**

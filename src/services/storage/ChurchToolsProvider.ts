@@ -14,6 +14,7 @@ import type {
   BookingCreate,
   BookingUpdate,
   BookingFilters,
+  ConditionAssessment,
   Kit,
   KitCreate,
   KitUpdate,
@@ -28,6 +29,7 @@ import type {
   SavedViewCreate,
   PersonInfo,
 } from '../../types/entities';
+import { EdgeCaseError } from '../../types/edge-cases';
 import { generateNextAssetNumber } from '../../utils/assetNumbers';
 
 /**
@@ -133,14 +135,33 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const updated = await this.apiClient.updateDataCategory(this.moduleId, id, updateData);
     const category = this.mapToAssetCategory(updated);
     
-    // Record change history for each field
-    for (const [field, value] of Object.entries(data)) {
+    // Record change history with granular field changes (T258 - E3)
+    const changes = [];
+    for (const [field, newValue] of Object.entries(data)) {
+      const oldValue = existing[field as keyof AssetCategory];
+      
+      // Deep comparison for actual changes
+      if (!this.valuesAreEqual(oldValue, newValue)) {
+        const formattedOld = this.formatFieldValue(oldValue);
+        const formattedNew = this.formatFieldValue(newValue);
+        
+        // Only record if formatted values are actually different
+        if (formattedOld !== formattedNew) {
+          changes.push({
+            field,
+            oldValue: formattedOld,
+            newValue: formattedNew,
+          });
+        }
+      }
+    }
+    
+    if (changes.length > 0) {
       await this.recordChange({
         entityType: 'category',
         entityId: id,
         action: 'updated',
-        fieldName: field,
-        newValue: JSON.stringify(value),
+        changes,
         changedBy: user.id,
         changedByName: `${user.firstName} ${user.lastName}`,
       });
@@ -226,11 +247,21 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const user = await this.apiClient.getCurrentUser();
     const category = await this.getCategory(data.category.id);
     
-    // Generate asset number using global prefix (FR-002)
-    const assets = await this.getAssets();
-    const existingNumbers = assets.map(a => a.assetNumber.replace(`${this.globalPrefix}-`, ''));
-    const nextNumber = generateNextAssetNumber(existingNumbers);
-    const assetNumber = `${this.globalPrefix}-${nextNumber}`;
+    // T274: Generate asset number using selected prefix or global prefix (FR-002)
+    let assetNumber: string;
+    
+    if (data.prefixId) {
+      // Use selected AssetPrefix (E5 - Multiple Asset Prefixes)
+      const prefix = await this.getAssetPrefix(data.prefixId);
+      const sequence = await this.incrementPrefixSequence(data.prefixId);
+      assetNumber = `${prefix.prefix}-${sequence.toString().padStart(3, '0')}`;
+    } else {
+      // Legacy: Use global prefix
+      const assets = await this.getAssets();
+      const existingNumbers = assets.map(a => a.assetNumber.replace(`${this.globalPrefix}-`, ''));
+      const nextNumber = generateNextAssetNumber(existingNumbers);
+      assetNumber = `${this.globalPrefix}-${nextNumber}`;
+    }
     
     const assetData = {
       assetNumber,
@@ -303,7 +334,8 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const asset = this.mapToAsset(updated, fullCategory);
     
     // Record change history with specific field changes
-    await this.recordAssetChanges(asset, previous, data, user);
+    // Compare the merged data with previous to capture actual changes
+    await this.recordAssetChanges(asset, previous, updatedAssetData, user);
     
     return asset;
   }
@@ -320,6 +352,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       inUseBy: data.inUseBy ?? previous.inUseBy,
       barcode: data.barcode ?? previous.barcode,
       qrCode: data.qrCode ?? previous.qrCode,
+      barcodeHistory: data.barcodeHistory ?? previous.barcodeHistory,
       customFieldValues: data.customFieldValues ?? previous.customFieldValues,
       parentAssetId: data.parentAssetId ?? previous.parentAssetId,
       isParent: data.isParent ?? previous.isParent,
@@ -335,30 +368,190 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   private async recordAssetChanges(
     asset: Asset,
     previous: Asset,
-    data: AssetUpdate,
+    updatedData: Record<string, unknown>,
     user: { id: string; firstName: string; lastName: string }
   ): Promise<void> {
-    for (const [field, newValue] of Object.entries(data)) {
-      const oldValue = previous[field as keyof Asset];
-      if (oldValue !== newValue) {
-        await this.recordChange({
-          entityType: 'asset',
-          entityId: asset.id,
-          entityName: asset.name,
-          action: 'updated',
-          fieldName: field,
-          oldValue: JSON.stringify(oldValue),
-          newValue: JSON.stringify(newValue),
-          changedBy: user.id,
-          changedByName: `${user.firstName} ${user.lastName}`,
-        });
+    // Build granular field changes array (T258 - E3)
+    // Compare ALL relevant fields between previous and updated data
+    const changes = [];
+    
+    // Fields to track for changes
+    const fieldsToTrack: Array<keyof Asset> = [
+      'name',
+      'description',
+      'manufacturer',
+      'model',
+      'status',
+      'location',
+      'inUseBy',
+      'barcode',
+      'qrCode',
+      'customFieldValues',
+      'parentAssetId',
+      'isParent',
+    ];
+    
+    for (const field of fieldsToTrack) {
+      const oldValue = previous[field];
+      const newValue = updatedData[field];
+      
+      // Deep comparison for actual changes (ignore non-changes)
+      if (!this.valuesAreEqual(oldValue, newValue)) {
+        const formattedOld = this.formatFieldValue(oldValue);
+        const formattedNew = this.formatFieldValue(newValue);
+        
+        // Only record if formatted values are actually different
+        if (formattedOld !== formattedNew) {
+          changes.push({
+            field,
+            oldValue: formattedOld,
+            newValue: formattedNew,
+          });
+        }
       }
     }
+    
+    if (changes.length > 0) {
+      await this.recordChange({
+        entityType: 'asset',
+        entityId: asset.id,
+        entityName: asset.name,
+        action: 'updated',
+        changes,
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+  }
+
+  /**
+   * Deep equality check for values (handles objects, arrays, primitives)
+   */
+  private valuesAreEqual(a: unknown, b: unknown): boolean {
+    // Same reference or both null/undefined
+    if (a === b) return true;
+    if (a === null || a === undefined || b === null || b === undefined) return false;
+    
+    // Different types
+    if (typeof a !== typeof b) return false;
+    
+    // Primitives (already checked with ===)
+    if (typeof a !== 'object') return a === b;
+    
+    // Arrays
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      return a.every((val, idx) => this.valuesAreEqual(val, b[idx]));
+    }
+    
+    // Objects
+    const aObj = a as Record<string, unknown>;
+    const bObj = b as Record<string, unknown>;
+    
+    // Get all keys (including those with null/undefined values)
+    const aKeys = Object.keys(aObj).filter(k => aObj[k] !== null && aObj[k] !== undefined);
+    const bKeys = Object.keys(bObj).filter(k => bObj[k] !== null && bObj[k] !== undefined);
+    
+    // Different number of non-null keys
+    if (aKeys.length !== bKeys.length) return false;
+    
+    // Check each key
+    for (const key of aKeys) {
+      if (!bKeys.includes(key)) return false;
+      if (!this.valuesAreEqual(aObj[key], bObj[key])) return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Format a field value for change history display (T258 - E3)
+   */
+  private formatFieldValue(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'object') {
+      // Special handling for person references
+      if ('personName' in value) {
+        return String(value.personName);
+      }
+      // For category, show just the name
+      if ('name' in value && 'id' in value) {
+        return String(value.name);
+      }
+      // For objects/arrays, use JSON but filter out null/undefined
+      const cleaned = this.cleanObjectForDisplay(value);
+      const json = JSON.stringify(cleaned);
+      // Return empty string for empty objects/arrays
+      if (json === '{}' || json === '[]') {
+        return '';
+      }
+      return json;
+    }
+    return String(value);
+  }
+
+  /**
+   * Remove null/undefined values from objects for cleaner display
+   */
+  private cleanObjectForDisplay(obj: unknown): unknown {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return obj;
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.cleanObjectForDisplay(item)).filter(item => item !== undefined);
+    }
+    
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value !== null && value !== undefined) {
+        const cleanedValue = this.cleanObjectForDisplay(value);
+        if (cleanedValue !== undefined) {
+          cleaned[key] = cleanedValue;
+        }
+      }
+    }
+    return cleaned;
   }
 
   async deleteAsset(id: string): Promise<void> {
     const user = await this.apiClient.getCurrentUser();
     const asset = await this.getAsset(id);
+    
+    // T241c: Check for children with active bookings before deletion
+    if (asset.childAssetIds && asset.childAssetIds.length > 0) {
+      const childrenWithBookings = [];
+      
+      for (const childId of asset.childAssetIds) {
+        const childAsset = await this.getAsset(childId);
+        const activeBookings = await this.getBookingsForAsset(childId);
+        const activeCount = activeBookings.filter(
+          b => b.status === 'approved' || b.status === 'active' || b.status === 'pending'
+        ).length;
+        
+        if (activeCount > 0) {
+          childrenWithBookings.push({
+            assetId: childId,
+            assetNumber: childAsset.assetNumber,
+            activeBookingCount: activeCount,
+          });
+        }
+      }
+      
+      if (childrenWithBookings.length > 0) {
+        const error = new EdgeCaseError(
+          `Cannot delete parent asset: ${childrenWithBookings.length} child asset(s) have active bookings`,
+          {
+            parentDeletionConflict: {
+              parentId: id,
+              childrenWithBookings,
+            },
+          }
+        );
+        throw error;
+      }
+    }
     
     // Record change history before deletion
     await this.recordChange({
@@ -372,6 +565,73 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     });
     
     await this.apiClient.deleteDataValue(this.moduleId, asset.category.id, id);
+  }
+
+  /**
+   * T282 - E2: Regenerate barcode for an asset
+   * Archives old barcode and generates new one with timestamp or custom barcode
+   * 
+   * @param id - Asset ID
+   * @param reason - Optional reason for regeneration
+   * @param customBarcode - Optional custom barcode (if not provided, auto-generates)
+   * @returns Updated asset with new barcode
+   */
+  async regenerateAssetBarcode(id: string, reason?: string, customBarcode?: string): Promise<Asset> {
+    const user = await this.apiClient.getCurrentUser();
+    const asset = await this.getAsset(id);
+    
+    // Archive the current barcode
+    const historyEntry = {
+      barcode: asset.barcode,
+      generatedAt: asset.lastModifiedAt,
+      generatedBy: asset.lastModifiedBy,
+      generatedByName: asset.lastModifiedByName,
+      reason,
+    };
+    
+    const barcodeHistory = asset.barcodeHistory || [];
+    barcodeHistory.push(historyEntry);
+    
+    // Use custom barcode if provided, otherwise generate new one with timestamp
+    let newBarcode: string;
+    if (customBarcode) {
+      // Check for duplicates
+      const allAssets = await this.getAssets();
+      const duplicate = allAssets.find(a => a.barcode === customBarcode && a.id !== id);
+      if (duplicate) {
+        throw new Error(`Barcode "${customBarcode}" is already used by asset ${duplicate.assetNumber}`);
+      }
+      newBarcode = customBarcode;
+    } else {
+      // Generate new barcode with timestamp to ensure uniqueness
+      const timestamp = Date.now().toString();
+      newBarcode = `${asset.assetNumber}-${timestamp.substring(timestamp.length - 6)}`;
+    }
+    
+    // Update asset with new barcode and history
+    const updatedAsset = await this.updateAsset(id, {
+      barcode: newBarcode,
+      barcodeHistory,
+    });
+    
+    // Record change history for barcode regeneration
+    await this.recordChange({
+      entityType: 'asset',
+      entityId: id,
+      entityName: asset.name,
+      action: 'updated',
+      changes: [
+        {
+          field: 'barcode',
+          oldValue: asset.barcode,
+          newValue: newBarcode,
+        },
+      ],
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return updatedAsset;
   }
 
   // ============================================================================
@@ -406,6 +666,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
               fieldName: parsed['fieldName'] as string | undefined,
               oldValue: parsed['oldValue'] as string | undefined,
               newValue: parsed['newValue'] as string | undefined,
+              changes: parsed['changes'] as ChangeHistoryEntry['changes'],
               changedBy: parsed['changedBy'] as string,
               changedByName: parsed['changedByName'] as string,
               changedAt: parsed['changedAt'] as string,
@@ -510,11 +771,12 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       },
       manufacturer: asset['manufacturer'] as string | undefined,
       model: asset['model'] as string | undefined,
-      status: asset['status'] as Asset['status'],
+      status: (asset['status'] as Asset['status']) || 'available',
       location: asset['location'] as string | undefined,
       inUseBy: asset['inUseBy'] as Asset['inUseBy'],
       barcode: asset['barcode'] as string,
       qrCode: asset['qrCode'] as string,
+      barcodeHistory: asset['barcodeHistory'] as Asset['barcodeHistory'],
       customFieldValues: (asset['customFieldValues'] || {}) as Record<string, string | number | boolean | string[]>,
       parentAssetId: asset['parentAssetId'] as string | undefined,
       isParent: ((asset['isParent'] as boolean | undefined) !== undefined ? asset['isParent'] as boolean : false),
@@ -643,101 +905,1235 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   // All stub methods intentionally throw errors and don't use await
   // ============================================================================
 
-  /* eslint-disable @typescript-eslint/require-await */
-  async createMultiAsset(_parentData: AssetCreate, _quantity: number): Promise<Asset[]> {
-    throw new Error('Multi-asset creation not implemented - Phase 4 (US4)');
+  /**
+   * T094 - US4: Create multiple assets from a parent
+   * Creates a parent asset and N child assets with sequential numbers
+   */
+  async createMultiAsset(parentData: AssetCreate, quantity: number): Promise<Asset[]> {
+    // Validate quantity
+    if (quantity < 2) {
+      throw new Error('Quantity must be at least 2 for multi-asset creation');
+    }
+    if (quantity > 100) {
+      throw new Error('Quantity must not exceed 100 assets');
+    }
+    
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getCategory(parentData.category.id);
+    const userName = `${user.firstName} ${user.lastName}`;
+    
+    // Generate sequential asset numbers
+    const baseNumber = await this.generateBaseNumberForMultiAsset();
+    const childIds = this.generateChildIds(quantity);
+    
+    // Create and store parent
+    const parent = await this.createParentAsset(parentData, category, baseNumber, childIds, user.id, userName);
+    
+    // Create and store children
+    const children = await this.createChildAssets(parentData, category, baseNumber, parent.id, quantity, user.id, userName);
+    
+    return [parent, ...children];
+  }
+
+  private async generateBaseNumberForMultiAsset(): Promise<string> {
+    const assets = await this.getAssets();
+    const existingNumbers = assets.map(a => a.assetNumber.replace(`${this.globalPrefix}-`, ''));
+    return generateNextAssetNumber(existingNumbers);
+  }
+
+  private generateChildIds(quantity: number): string[] {
+    const ids: string[] = [];
+    for (let i = 0; i < quantity; i++) {
+      ids.push(crypto.randomUUID());
+    }
+    return ids;
+  }
+
+  private async createParentAsset(
+    data: AssetCreate,
+    category: AssetCategory,
+    baseNumber: string,
+    childIds: string[],
+    userId: string,
+    userName: string
+  ): Promise<Asset> {
+    const assetNumber = `${this.globalPrefix}-${baseNumber}`;
+    const assetData = {
+      assetNumber,
+      name: data.name,
+      description: data.description,
+      manufacturer: data.manufacturer,
+      model: data.model,
+      status: data.status,
+      location: data.location,
+      inUseBy: data.inUseBy,
+      barcode: assetNumber,
+      qrCode: assetNumber,
+      barcodeHistory: [],
+      isParent: true,
+      parentAssetId: undefined,
+      childAssetIds: childIds,
+      customFieldValues: data.customFieldValues,
+      createdBy: userId,
+      createdByName: userName,
+      createdAt: new Date().toISOString(),
+      lastModifiedBy: userId,
+      lastModifiedByName: userName,
+      lastModifiedAt: new Date().toISOString(),
+    };
+
+    const dataValue = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(assetData),
+    };
+
+    const created = await this.apiClient.createDataValue(this.moduleId, category.id, dataValue);
+    return this.mapToAsset(created, category);
+  }
+
+  private async createChildAssets(
+    data: AssetCreate,
+    category: AssetCategory,
+    baseNumber: string,
+    parentId: string,
+    quantity: number,
+    userId: string,
+    userName: string
+  ): Promise<Asset[]> {
+    const children: Asset[] = [];
+
+    for (let i = 1; i <= quantity; i++) {
+      const childNumber = String(parseInt(baseNumber) + i).padStart(3, '0');
+      const childAssetNumber = `${this.globalPrefix}-${childNumber}`;
+
+      const childData = {
+        assetNumber: childAssetNumber,
+        name: `${data.name} #${i}`,
+        description: data.description,
+        manufacturer: data.manufacturer,
+        model: data.model,
+        status: data.status,
+        location: data.location,
+        inUseBy: data.inUseBy,
+        barcode: childAssetNumber,
+        qrCode: childAssetNumber,
+        barcodeHistory: [],
+        isParent: false,
+        parentAssetId: parentId,
+        childAssetIds: [],
+        customFieldValues: { ...data.customFieldValues },  // T096: Inherit from parent
+        createdBy: userId,
+        createdByName: userName,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: userId,
+        lastModifiedByName: userName,
+        lastModifiedAt: new Date().toISOString(),
+      };
+
+      const dataValue = {
+        dataCategoryId: Number(category.id),
+        value: JSON.stringify(childData),
+      };
+
+      const created = await this.apiClient.createDataValue(this.moduleId, category.id, dataValue);
+      const child = this.mapToAsset(created, category);
+      children.push(child);
+    }
+
+    return children;
   }
 
   async searchAssets(_query: string): Promise<Asset[]> {
     throw new Error('Asset search not implemented - Phase 4 (US4)');
   }
 
-  async getBookings(_filters?: BookingFilters): Promise<Booking[]> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  // ============================================================================
+  // Bookings
+  // ============================================================================
+
+  private async getBookingCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let bookingCategory = categories.find(cat => cat.name === '__Bookings__');
+    
+    if (!bookingCategory) {
+      // Create the bookings category
+      const user = await this.apiClient.getCurrentUser();
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__Bookings__',
+        shorty: 'bookings' + Date.now().toString().slice(-4),
+        description: 'System category for equipment bookings',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      bookingCategory = this.mapToAssetCategory(created);
+      
+      await this.recordChange({
+        entityType: 'category',
+        entityId: bookingCategory.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+    
+    return bookingCategory;
   }
 
-  async getBooking(_id: string): Promise<Booking> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  private mapToBooking(value: unknown): Booking {
+    const val = value as Record<string, unknown>;
+    
+    // ChurchTools returns data in 'value' field for custom data
+    const dataStr = (val['value'] || val['data']) as string | null;
+    const data = dataStr ? JSON.parse(dataStr) : {};
+    
+    return {
+      id: val['id']?.toString() || '',
+      asset: data.asset || { id: '', assetNumber: '', name: '' },
+      kit: data.kit,
+      startDate: data.startDate || '',
+      endDate: data.endDate || '',
+      purpose: data.purpose || '',
+      notes: data.notes,
+      status: data.status || 'pending',
+      requestedBy: data.requestedBy || '',
+      requestedByName: data.requestedByName || '',
+      approvedBy: data.approvedBy,
+      approvedByName: data.approvedByName,
+      checkedOutAt: data.checkedOutAt,
+      checkedOutBy: data.checkedOutBy,
+      checkedOutByName: data.checkedOutByName,
+      checkedInAt: data.checkedInAt,
+      checkedInBy: data.checkedInBy,
+      checkedInByName: data.checkedInByName,
+      conditionOnCheckOut: data.conditionOnCheckOut,
+      conditionOnCheckIn: data.conditionOnCheckIn,
+      damageReported: data.damageReported,
+      damageNotes: data.damageNotes,
+      createdAt: data.createdAt || val['created_at'] as string || new Date().toISOString(),
+      lastModifiedAt: data.lastModifiedAt || val['modified_at'] as string || new Date().toISOString(),
+    };
   }
 
-  async getBookingsForAsset(_assetId: string, _dateRange?: { start: string; end: string }): Promise<Booking[]> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  async getBookings(filters?: BookingFilters): Promise<Booking[]> {
+    const category = await this.getBookingCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    let bookings = values.map((val: unknown) => this.mapToBooking(val));
+    
+    // Apply filters
+    if (filters) {
+      if (filters.assetId) {
+        bookings = bookings.filter(b => b.asset?.id === filters.assetId);
+      }
+      if (filters.kitId) {
+        bookings = bookings.filter(b => b.kit?.id === filters.kitId);
+      }
+      if (filters.status) {
+        const statusArray = Array.isArray(filters.status) ? filters.status : [filters.status];
+        bookings = bookings.filter(b => statusArray.includes(b.status));
+      }
+      if (filters.requestedBy) {
+        bookings = bookings.filter(b => b.requestedBy === filters.requestedBy);
+      }
+      if (filters.dateRange) {
+        const dateRange = filters.dateRange;
+        bookings = bookings.filter(b => {
+          const bookingStart = new Date(b.startDate);
+          const bookingEnd = new Date(b.endDate);
+          const filterStart = new Date(dateRange.start);
+          const filterEnd = new Date(dateRange.end);
+          
+          // Check for overlap
+          return bookingStart <= filterEnd && bookingEnd >= filterStart;
+        });
+      }
+    }
+    
+    return bookings;
   }
 
-  async createBooking(_data: BookingCreate): Promise<Booking> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  async getBooking(id: string): Promise<Booking | null> {
+    const bookings = await this.getBookings();
+    return bookings.find(b => b.id === id) || null;
   }
 
-  async updateBooking(_id: string, _data: BookingUpdate): Promise<Booking> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  async getBookingsForAsset(assetId: string, dateRange?: { start: string; end: string }): Promise<Booking[]> {
+    const filters: BookingFilters = { assetId };
+    if (dateRange) {
+      filters.dateRange = dateRange;
+    }
+    return await this.getBookings(filters);
   }
 
-  async cancelBooking(_id: string, _reason?: string): Promise<void> {
-    throw new Error('Bookings not implemented - Phase 5 (US5)');
+  /**
+   * Validate booking creation data
+   */
+  private async validateBookingCreate(data: BookingCreate): Promise<void> {
+    // Validate asset reference exists
+    if (!data.asset || !data.asset.id) {
+      throw new Error('Asset-Referenz erforderlich');
+    }
+    
+    // Validate date range
+    if (new Date(data.endDate) <= new Date(data.startDate)) {
+      throw new Error('Enddatum muss nach dem Startdatum liegen');
+    }
+    
+    // Get asset and validate its status
+    const asset = await this.getAsset(data.asset.id);
+    if (!asset) {
+      throw new Error('Asset nicht gefunden');
+    }
+    
+    // Validate asset is not in broken/sold/destroyed status
+    if (asset.status === 'broken' || asset.status === 'sold' || asset.status === 'destroyed') {
+      throw new Error(`Asset kann nicht gebucht werden (Status: ${asset.status})`);
+    }
+    
+    // Check availability before creating
+    const available = await this.isAssetAvailable(
+      data.asset.id,
+      data.startDate,
+      data.endDate
+    );
+    
+    if (!available) {
+      throw new Error('Asset ist für den gewählten Zeitraum nicht verfügbar');
+    }
   }
 
-  async isAssetAvailable(_assetId: string, _startDate: string, _endDate: string): Promise<boolean> {
-    throw new Error('Availability checking not implemented - Phase 5 (US5)');
+  /**
+   * Resolve person name for booking, with fallback to provided name
+   */
+  private async resolvePersonName(personId: string | undefined, fallbackName: string): Promise<string> {
+    if (!personId) {
+      return fallbackName;
+    }
+    
+    try {
+      const person = await this.getPersonInfo(personId);
+      return `${person.firstName} ${person.lastName}`;
+    } catch (error) {
+      console.warn('Failed to fetch person info, using provided name:', error);
+      return fallbackName;
+    }
   }
 
-  async checkOut(_bookingId: string, _conditionAssessment?: unknown): Promise<Booking> {
-    throw new Error('Check-out not implemented - Phase 5 (US5)');
+  /**
+   * Prepare booking data for storage
+   */
+  private async prepareBookingData(data: BookingCreate): Promise<Record<string, unknown>> {
+    // Validate asset data
+    if (!data.asset || !data.asset.id) {
+      throw new Error('Asset ist erforderlich');
+    }
+    
+    // Get person info for requestedBy
+    const requestedByName = await this.resolvePersonName(
+      data.requestedBy,
+      data.requestedByName || 'Unknown'
+    );
+    
+    return {
+      asset: {
+        id: data.asset.id,
+        assetNumber: data.asset.assetNumber || '',
+        name: data.asset.name || '',
+      },
+      kit: data.kit ? {
+        id: data.kit.id,
+        name: data.kit.name,
+      } : undefined,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      purpose: data.purpose,
+      notes: data.notes,
+      status: 'pending',
+      requestedBy: data.requestedBy,
+      requestedByName: requestedByName,
+      createdAt: new Date().toISOString(),
+      lastModifiedAt: new Date().toISOString(),
+    };
   }
 
-  async checkIn(_bookingId: string, _conditionAssessment: unknown): Promise<Booking> {
-    throw new Error('Check-in not implemented - Phase 5 (US5)');
+  async createBooking(data: BookingCreate): Promise<Booking> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getBookingCategory();
+    
+    // T124: Enhanced validation
+    await this.validateBookingCreate(data);
+    
+    // Prepare booking data
+    const bookingData = await this.prepareBookingData(data);
+    
+    // ChurchTools expects: { dataCategoryId: number, value: string }
+    const valueData = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(bookingData),
+    };
+    
+    try {
+      const created = await this.apiClient.createDataValue(this.moduleId, category.id, valueData);
+      const booking = this.mapToBooking(created);
+      
+      // Record change history
+      await this.recordChange({
+        entityType: 'booking',
+        entityId: booking.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+      
+      return booking;
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to create booking:', error);
+      console.error('[ChurchToolsProvider] Booking data that failed:', bookingData);
+      throw error;
+    }
+  }
+
+  async updateBooking(id: string, data: BookingUpdate): Promise<Booking> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getBookingCategory();
+    const existing = await this.getBooking(id);
+    
+    if (!existing) {
+      throw new Error(`Booking with ID ${id} not found`);
+    }
+    
+    // Merge with existing data
+    const updatedData = {
+      ...existing,
+      ...data,
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    // ChurchTools API requires: { id, dataCategoryId, value: string }
+    const valueData = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedData),
+    };
+    
+    const updated = await this.apiClient.updateDataValue(this.moduleId, category.id, id, valueData);
+    const booking = this.mapToBooking(updated);
+    
+    // Record change history with granular field changes
+    const changes = [];
+    for (const [field, newValue] of Object.entries(data)) {
+      const oldValue = existing[field as keyof Booking];
+      if (!this.valuesAreEqual(oldValue, newValue)) {
+        const formattedOld = this.formatFieldValue(oldValue);
+        const formattedNew = this.formatFieldValue(newValue);
+        if (formattedOld !== formattedNew) {
+          changes.push({
+            field,
+            oldValue: formattedOld,
+            newValue: formattedNew,
+          });
+        }
+      }
+    }
+    
+    if (changes.length > 0) {
+      await this.recordChange({
+        entityType: 'booking',
+        entityId: id,
+        action: 'updated',
+        changes,
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+    
+    return booking;
+  }
+
+  async cancelBooking(id: string, reason?: string): Promise<void> {
+    // T123: Enhanced cancellation validation
+    const booking = await this.getBooking(id);
+    
+    if (!booking) {
+      throw new Error('Buchung nicht gefunden');
+    }
+    
+    // Validate booking can be cancelled
+    if (booking.status === 'completed') {
+      throw new Error('Abgeschlossene Buchungen können nicht storniert werden');
+    }
+    
+    if (booking.status === 'cancelled') {
+      throw new Error('Buchung ist bereits storniert');
+    }
+    
+    // If booking is active, we need to free the asset
+    if (booking.status === 'active' && booking.asset) {
+      await this.updateAsset(booking.asset.id, {
+        status: 'available',
+        inUseBy: undefined,
+      });
+    }
+    
+    const user = await this.apiClient.getCurrentUser();
+    
+    await this.updateBooking(id, {
+      status: 'cancelled',
+    });
+    
+    // Record cancellation in change history
+    await this.recordChange({
+      entityType: 'booking',
+      entityId: id,
+      action: 'updated',
+      changes: [
+        {
+          field: 'status',
+          oldValue: booking.status,
+          newValue: 'cancelled',
+        },
+        ...(reason ? [{
+          field: 'cancellationReason',
+          oldValue: '',
+          newValue: reason,
+        }] : []),
+      ],
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+  }
+
+  async isAssetAvailable(assetId: string, startDate: string, endDate: string): Promise<boolean> {
+    const bookings = await this.getBookingsForAsset(assetId, {
+      start: startDate,
+      end: endDate,
+    });
+    
+    // Asset is available if there are no active or approved bookings in the date range
+    const conflictingBookings = bookings.filter(b =>
+      b.status === 'approved' || b.status === 'active'
+    );
+    
+    return conflictingBookings.length === 0;
+  }
+
+  async checkOut(bookingId: string, conditionAssessment?: unknown): Promise<Booking> {
+    const user = await this.apiClient.getCurrentUser();
+    const booking = await this.getBooking(bookingId);
+    
+    if (!booking) {
+      throw new Error(`Booking with ID ${bookingId} not found`);
+    }
+    
+    if (booking.status !== 'approved') {
+      throw new Error('Can only check out approved bookings');
+    }
+    
+    // Update booking status
+    const updated = await this.updateBooking(bookingId, {
+      status: 'active',
+      checkedOutAt: new Date().toISOString(),
+      checkedOutBy: user.id,
+      checkedOutByName: `${user.firstName} ${user.lastName}`,
+      conditionOnCheckOut: conditionAssessment as ConditionAssessment | undefined,
+    });
+    
+    // Update asset status to in-use
+    if (booking.asset) {
+      await this.updateAsset(booking.asset.id, {
+        status: 'in-use',
+        inUseBy: {
+          personId: user.id,
+          personName: `${user.firstName} ${user.lastName}`,
+          since: new Date().toISOString(),
+        },
+      });
+    }
+    
+    return updated;
+  }
+
+  async checkIn(bookingId: string, conditionAssessment: unknown): Promise<Booking> {
+    const user = await this.apiClient.getCurrentUser();
+    const booking = await this.getBooking(bookingId);
+    
+    if (!booking) {
+      throw new Error(`Booking with ID ${bookingId} not found`);
+    }
+    
+    if (booking.status !== 'active') {
+      throw new Error('Can only check in active bookings');
+    }
+    
+    // Extract damage information from condition assessment
+    const condition = conditionAssessment as { rating: string; notes?: string; photos?: string[] };
+    const damageReported = condition.rating === 'damaged' || condition.rating === 'poor';
+    
+    // Update booking status
+    const updated = await this.updateBooking(bookingId, {
+      status: 'completed',
+      checkedInAt: new Date().toISOString(),
+      checkedInBy: user.id,
+      checkedInByName: `${user.firstName} ${user.lastName}`,
+      conditionOnCheckIn: conditionAssessment as ConditionAssessment,
+      damageReported,
+      damageNotes: damageReported ? condition.notes : undefined,
+    });
+    
+    // Update asset status
+    if (booking.asset) {
+      const newStatus = damageReported ? 'broken' : 'available';
+      await this.updateAsset(booking.asset.id, {
+        status: newStatus,
+        inUseBy: undefined,
+      });
+    }
+    
+    return updated;
+  }
+
+  // ============================================================================
+  // Kits
+  // ============================================================================
+
+  /**
+   * Get the internal category for storing kits
+   */
+  private async getKitsCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let kitsCategory = categories.find(cat => cat.name === '__Kits__');
+    
+    if (!kitsCategory) {
+      // Create the kits category
+      const user = await this.apiClient.getCurrentUser();
+      const shorty = 'kits_' + Date.now().toString().substring(-4);
+      
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__Kits__',
+        shorty,
+        description: 'Internal category for equipment kits',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      kitsCategory = this.mapToAssetCategory(created);
+      
+      // Record change history
+      await this.recordChange({
+        entityType: 'category',
+        entityId: kitsCategory.id,
+        entityName: kitsCategory.name,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: user.name,
+      });
+    }
+    
+    return kitsCategory;
+  }
+
+  /**
+   * Map ChurchTools custom data value to Kit entity
+   */
+  private mapToKit(value: unknown): Kit {
+    const val = value as Record<string, unknown>;
+    const dataStr = (val['value'] || val['data']) as string | null;
+    
+    if (!dataStr) {
+      throw new Error('Invalid kit data: missing value field');
+    }
+    
+    const data = JSON.parse(dataStr) as Record<string, unknown>;
+    
+    return {
+      id: String(val['id']),
+      name: data['name'] as string,
+      description: data['description'] as string | undefined,
+      type: data['type'] as 'fixed' | 'flexible',
+      boundAssets: data['boundAssets'] as Kit['boundAssets'],
+      poolRequirements: data['poolRequirements'] as Kit['poolRequirements'],
+      createdBy: data['createdBy'] as string,
+      createdByName: data['createdByName'] as string,
+      createdAt: (data['createdAt'] || val['created_at'] || new Date().toISOString()) as string,
+      lastModifiedBy: data['lastModifiedBy'] as string,
+      lastModifiedByName: data['lastModifiedByName'] as string,
+      lastModifiedAt: (data['lastModifiedAt'] || val['modified_at'] || new Date().toISOString()) as string,
+    };
   }
 
   async getKits(): Promise<Kit[]> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+    try {
+      const category = await this.getKitsCategory();
+      const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+      return values.map(v => this.mapToKit(v));
+    } catch (error) {
+      console.error('Error fetching kits:', error);
+      return [];
+    }
   }
 
-  async getKit(_id: string): Promise<Kit> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+  async getKit(id: string): Promise<Kit | null> {
+    try {
+      const category = await this.getKitsCategory();
+      const value = await this.apiClient.getDataValue(this.moduleId, category.id, id);
+      return this.mapToKit(value);
+    } catch (error) {
+      console.error('Error fetching kit:', error);
+      return null;
+    }
   }
 
-  async createKit(_data: KitCreate): Promise<Kit> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+  async createKit(data: KitCreate): Promise<Kit> {
+    const category = await this.getKitsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    // Validate kit data
+    if (data.type === 'fixed' && (!data.boundAssets || data.boundAssets.length === 0)) {
+      throw new Error('Fixed kit must have at least one bound asset');
+    }
+    
+    if (data.type === 'flexible' && (!data.poolRequirements || data.poolRequirements.length === 0)) {
+      throw new Error('Flexible kit must have at least one pool requirement');
+    }
+    
+    // Validate bound assets exist (for fixed kits)
+    if (data.type === 'fixed' && data.boundAssets) {
+      for (const boundAsset of data.boundAssets) {
+        const asset = await this.getAsset(boundAsset.assetId);
+        if (!asset) {
+          throw new Error(`Asset ${boundAsset.assetNumber} not found`);
+        }
+        if (asset.status !== 'available') {
+          throw new Error(`Asset ${boundAsset.assetNumber} is not available (status: ${asset.status})`);
+        }
+      }
+    }
+    
+    const now = new Date().toISOString();
+    const kitData = {
+      ...data,
+      createdBy: user.id,
+      createdByName: user.name,
+      createdAt: now,
+      lastModifiedBy: user.id,
+      lastModifiedByName: user.name,
+      lastModifiedAt: now,
+    };
+    
+    const valueData = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(kitData),
+    };
+    
+    const created = await this.apiClient.createDataValue(this.moduleId, category.id, valueData);
+    const kit = this.mapToKit(created);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'kit',
+      entityId: kit.id,
+      entityName: kit.name,
+      action: 'created',
+      changedBy: user.id,
+      changedByName: user.name,
+    });
+    
+    return kit;
   }
 
-  async updateKit(_id: string, _data: KitUpdate): Promise<Kit> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+  async updateKit(id: string, data: KitUpdate): Promise<Kit> {
+    const existing = await this.getKit(id);
+    if (!existing) {
+      throw new Error(`Kit ${id} not found`);
+    }
+    
+    const category = await this.getKitsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    // Validate updates
+    if (data.boundAssets && data.boundAssets.length > 0) {
+      for (const boundAsset of data.boundAssets) {
+        const asset = await this.getAsset(boundAsset.assetId);
+        if (!asset) {
+          throw new Error(`Asset ${boundAsset.assetNumber} not found`);
+        }
+      }
+    }
+    
+    const now = new Date().toISOString();
+    const updatedKitData = {
+      ...existing,
+      ...data,
+      lastModifiedBy: user.id,
+      lastModifiedByName: user.name,
+      lastModifiedAt: now,
+    };
+    
+    const valueData = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedKitData),
+    };
+    
+    const updated = await this.apiClient.updateDataValue(this.moduleId, category.id, id, valueData);
+    const kit = this.mapToKit(updated);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'kit',
+      entityId: kit.id,
+      entityName: kit.name,
+      action: 'updated',
+      changedBy: user.id,
+      changedByName: user.name,
+    });
+    
+    return kit;
   }
 
-  async deleteKit(_id: string): Promise<void> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+  async deleteKit(id: string): Promise<void> {
+    const kit = await this.getKit(id);
+    if (!kit) {
+      throw new Error(`Kit ${id} not found`);
+    }
+    
+    // Check for active bookings
+    const bookings = await this.getBookings({ kitId: id, status: ['pending', 'approved', 'active'] });
+    if (bookings.length > 0) {
+      throw new Error(`Cannot delete kit with active bookings (${bookings.length} bookings found)`);
+    }
+    
+    const category = await this.getKitsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'kit',
+      entityId: id,
+      entityName: kit.name,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: user.name,
+    });
   }
 
-  async getMaintenanceRecords(_assetId: string): Promise<MaintenanceRecord[]> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  // ============================================================================
+  // Maintenance - Phase 10 (T168)
+  // ============================================================================
+
+  /**
+   * Get maintenance records category (internal storage)
+   */
+  private async getMaintenanceRecordsCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let maintenanceCategory = categories.find(cat => cat.name === '__MaintenanceRecords__');
+    
+    if (!maintenanceCategory) {
+      const user = await this.apiClient.getCurrentUser();
+      const shorty = 'maint_' + Date.now().toString().substring(-4);
+      
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__MaintenanceRecords__',
+        shorty,
+        description: 'Internal category for maintenance records',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      maintenanceCategory = this.mapToAssetCategory(created);
+      
+      await this.recordChange({
+        entityType: 'category',
+        entityId: maintenanceCategory.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+    
+    return maintenanceCategory;
   }
 
-  async getMaintenanceRecord(_id: string): Promise<MaintenanceRecord> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  /**
+   * Get maintenance schedules category (internal storage)
+   */
+  private async getMaintenanceSchedulesCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let scheduleCategory = categories.find(cat => cat.name === '__MaintenanceSchedules__');
+    
+    if (!scheduleCategory) {
+      const user = await this.apiClient.getCurrentUser();
+      const shorty = 'sched_' + Date.now().toString().substring(-4);
+      
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__MaintenanceSchedules__',
+        shorty,
+        description: 'Internal category for maintenance schedules',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      scheduleCategory = this.mapToAssetCategory(created);
+      
+      await this.recordChange({
+        entityType: 'category',
+        entityId: scheduleCategory.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+    
+    return scheduleCategory;
   }
 
-  async createMaintenanceRecord(_data: MaintenanceRecordCreate): Promise<MaintenanceRecord> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  async getMaintenanceRecords(assetId?: string): Promise<MaintenanceRecord[]> {
+    const category = await this.getMaintenanceRecordsCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    let records = values.map((val: unknown) => this.mapToMaintenanceRecord(val));
+    
+    if (assetId) {
+      records = records.filter((r: MaintenanceRecord) => r.asset.id === assetId);
+    }
+    
+    return records.sort((a: MaintenanceRecord, b: MaintenanceRecord) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }
+
+  async getMaintenanceRecord(id: string): Promise<MaintenanceRecord | null> {
+    const records = await this.getMaintenanceRecords();
+    return records.find(r => r.id === id) || null;
+  }
+
+  async createMaintenanceRecord(recordData: MaintenanceRecordCreate): Promise<MaintenanceRecord> {
+    const category = await this.getMaintenanceRecordsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    const dataValue = await this.apiClient.createDataValue(
+      this.moduleId,
+      category.id,
+      recordData
+    );
+    
+    const record = this.mapToMaintenanceRecord(dataValue);
+    
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: record.id,
+      action: 'created',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return record;
+  }
+
+  async updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord> {
+    const existing = await this.getMaintenanceRecord(id);
+    
+    if (!existing) {
+      throw new Error(`Maintenance record ${id} not found`);
+    }
+    
+    const category = await this.getMaintenanceRecordsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    const updated = { ...existing, ...updates };
+    
+    const dataValue = await this.apiClient.updateDataValue(
+      this.moduleId,
+      category.id,
+      id,
+      updated
+    );
+    
+    const record = this.mapToMaintenanceRecord(dataValue);
+    
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: id,
+      action: 'updated',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return record;
+  }
+
+  private mapToMaintenanceRecord(val: unknown): MaintenanceRecord {
+    const v = val as Record<string, unknown>;
+    return {
+      id: v['id'] as string,
+      asset: v['asset'] as MaintenanceRecord['asset'],
+      type: v['type'] as MaintenanceRecord['type'],
+      date: v['date'] as string,
+      performedBy: v['performedBy'] as string,
+      performedByName: v['performedByName'] as string,
+      description: v['description'] as string,
+      notes: v['notes'] as string | undefined,
+      cost: v['cost'] as number | undefined,
+      photos: v['photos'] as string[] | undefined,
+      documents: v['documents'] as string[] | undefined,
+      nextDueDate: v['nextDueDate'] as string | undefined,
+      createdAt: v['created_at'] as string || new Date().toISOString(),
+      lastModifiedAt: v['modified_at'] as string || new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Check availability of fixed kit (all bound assets must be available)
+   */
+  private async checkFixedKitAvailability(
+    kit: Kit,
+    startDate: string,
+    endDate: string
+  ): Promise<{ available: boolean; unavailableAssets?: string[]; reason?: string }> {
+    const unavailableAssets: string[] = [];
+    
+    if (!kit.boundAssets || kit.boundAssets.length === 0) {
+      return { available: false, reason: 'Fixed kit has no bound assets' };
+    }
+    
+    for (const boundAsset of kit.boundAssets) {
+      const isAvailable = await this.isAssetAvailable(boundAsset.assetId, startDate, endDate);
+      if (!isAvailable) {
+        unavailableAssets.push(boundAsset.assetId);
+      }
+    }
+    
+    if (unavailableAssets.length > 0) {
+      return {
+        available: false,
+        unavailableAssets,
+        reason: `${unavailableAssets.length} asset(s) unavailable`,
+      };
+    }
+    
+    return { available: true };
+  }
+
+  /**
+   * Check availability of flexible kit (sufficient pool assets must be available)
+   */
+  private async checkFlexibleKitAvailability(
+    kit: Kit,
+    startDate: string,
+    endDate: string
+  ): Promise<{ available: boolean; unavailableAssets?: string[]; reason?: string }> {
+    if (!kit.poolRequirements || kit.poolRequirements.length === 0) {
+      return { available: false, reason: 'Flexible kit has no pool requirements' };
+    }
+    
+    for (const pool of kit.poolRequirements) {
+      // Get all assets in this category
+      const assets = await this.getAssets({ categoryId: pool.categoryId });
+      
+      // Apply additional filters if specified
+      let filteredAssets = assets;
+      if (pool.filters) {
+        filteredAssets = assets.filter(asset => {
+          for (const [key, value] of Object.entries(pool.filters || {})) {
+            if (asset.customFieldValues[key] !== value) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+      
+      // Count how many are available
+      let availableCount = 0;
+      for (const asset of filteredAssets) {
+        const isAvailable = await this.isAssetAvailable(asset.id, startDate, endDate);
+        if (isAvailable) {
+          availableCount++;
+        }
+      }
+      
+      if (availableCount < pool.quantity) {
+        return {
+          available: false,
+          reason: `Insufficient assets in pool ${pool.categoryName}: need ${pool.quantity}, only ${availableCount} available`,
+        };
+      }
+    }
+    
+    return { available: true };
   }
 
   async isKitAvailable(_kitId: string, _startDate: string, _endDate: string): Promise<{ available: boolean; unavailableAssets?: string[]; reason?: string }> {
-    throw new Error('Kits not implemented - Phase 6 (US6)');
+    const kit = await this.getKit(_kitId);
+    if (!kit) {
+      return { available: false, reason: 'Kit not found' };
+    }
+    
+    if (kit.type === 'fixed') {
+      return this.checkFixedKitAvailability(kit, _startDate, _endDate);
+    } else {
+      return this.checkFlexibleKitAvailability(kit, _startDate, _endDate);
+    }
   }
 
-  async getMaintenanceSchedule(_assetId: string): Promise<MaintenanceSchedule | null> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  async getMaintenanceSchedules(assetId?: string): Promise<MaintenanceSchedule[]> {
+    const category = await this.getMaintenanceSchedulesCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    let schedules = values.map((val: unknown) => this.mapToMaintenanceSchedule(val));
+    
+    if (assetId) {
+      schedules = schedules.filter((s: MaintenanceSchedule) => s.assetId === assetId);
+    }
+    
+    return schedules;
   }
 
-  async setMaintenanceSchedule(_schedule: MaintenanceScheduleCreate): Promise<MaintenanceSchedule> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  async getMaintenanceSchedule(assetId: string): Promise<MaintenanceSchedule | null> {
+    const schedules = await this.getMaintenanceSchedules(assetId);
+    return schedules[0] || null;
+  }
+
+  async createMaintenanceSchedule(scheduleData: MaintenanceScheduleCreate): Promise<MaintenanceSchedule> {
+    const category = await this.getMaintenanceSchedulesCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    const dataValue = await this.apiClient.createDataValue(
+      this.moduleId,
+      category.id,
+      scheduleData
+    );
+    
+    const schedule = this.mapToMaintenanceSchedule(dataValue);
+    
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: schedule.id,
+      action: 'created',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return schedule;
+  }
+
+  async updateMaintenanceSchedule(id: string, updates: Partial<MaintenanceSchedule>): Promise<MaintenanceSchedule> {
+    const category = await this.getMaintenanceSchedulesCategory();
+    const schedules = await this.getMaintenanceSchedules();
+    const existing = schedules.find(s => s.id === id);
+    
+    if (!existing) {
+      throw new Error(`Maintenance schedule ${id} not found`);
+    }
+    
+    const user = await this.apiClient.getCurrentUser();
+    const updated = { ...existing, ...updates };
+    
+    const dataValue = await this.apiClient.updateDataValue(
+      this.moduleId,
+      category.id,
+      id,
+      updated
+    );
+    
+    const schedule = this.mapToMaintenanceSchedule(dataValue);
+    
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: id,
+      action: 'updated',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return schedule;
+  }
+
+  async deleteMaintenanceSchedule(id: string): Promise<void> {
+    const category = await this.getMaintenanceSchedulesCategory();
+    const user = await this.apiClient.getCurrentUser();
+    
+    await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+    
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: id,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+  }
+
+  async getOverdueMaintenanceSchedules(): Promise<MaintenanceSchedule[]> {
+    const schedules = await this.getMaintenanceSchedules();
+    const today = new Date().toISOString().split('T')[0] as string;
+    
+    return schedules.filter((s: MaintenanceSchedule) => 
+      s.nextDue !== undefined && s.nextDue < today
+    );
   }
 
   async getOverdueMaintenance(): Promise<Asset[]> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+    const overdueSchedules = await this.getOverdueMaintenanceSchedules();
+    const assetIds = new Set(overdueSchedules.map(s => s.assetId));
+    
+    const assets: Asset[] = [];
+    for (const assetId of assetIds) {
+      const asset = await this.getAsset(assetId);
+      if (asset) {
+        assets.push(asset);
+      }
+    }
+    
+    return assets;
   }
 
-  async getUpcomingMaintenance(_daysAhead: number): Promise<Asset[]> {
-    throw new Error('Maintenance not implemented - Phase 7 (US7)');
+  async getUpcomingMaintenance(daysAhead: number): Promise<Asset[]> {
+    const schedules = await this.getMaintenanceSchedules();
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + daysAhead);
+    const futureDateStr = futureDate.toISOString().split('T')[0] as string;
+    const todayStr = today.toISOString().split('T')[0] as string;
+    
+    const upcoming = schedules.filter((s: MaintenanceSchedule) => 
+      s.nextDue !== undefined && s.nextDue >= todayStr && s.nextDue <= futureDateStr
+    );
+    
+    const assetIds = new Set(upcoming.map(s => s.assetId));
+    const assets: Asset[] = [];
+    for (const assetId of assetIds) {
+      const asset = await this.getAsset(assetId);
+      if (asset) {
+        assets.push(asset);
+      }
+    }
+    
+    return assets;
+  }
+
+  private mapToMaintenanceSchedule(val: unknown): MaintenanceSchedule {
+    const v = val as Record<string, unknown>;
+    return {
+      id: v['id'] as string,
+      assetId: v['assetId'] as string,
+      scheduleType: v['scheduleType'] as MaintenanceSchedule['scheduleType'],
+      intervalDays: v['intervalDays'] as number | undefined,
+      intervalMonths: v['intervalMonths'] as number | undefined,
+      intervalYears: v['intervalYears'] as number | undefined,
+      intervalHours: v['intervalHours'] as number | undefined,
+      intervalBookings: v['intervalBookings'] as number | undefined,
+      fixedDate: v['fixedDate'] as string | undefined,
+      reminderDaysBefore: v['reminderDaysBefore'] as number,
+      lastPerformed: v['lastPerformed'] as string | undefined,
+      nextDue: v['nextDue'] as string | undefined,
+      isOverdue: v['isOverdue'] as boolean | undefined,
+      createdAt: v['created_at'] as string || new Date().toISOString(),
+      lastModifiedAt: v['modified_at'] as string || new Date().toISOString(),
+    };
   }
 
   // ============================================================================
@@ -923,10 +2319,19 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const category = await this.getStockTakeCategory();
     const session = await this.getStockTakeSession(sessionId);
     
-    // Check if asset already scanned
-    const alreadyScanned = session.scannedAssets.some(scan => scan.assetId === assetId);
-    if (alreadyScanned) {
-      throw new Error(`Asset ${assetId} has already been scanned in this session`);
+    // T241b: Enhanced duplicate scan prevention with timestamp info
+    const existingScan = session.scannedAssets.find(scan => scan.assetId === assetId);
+    if (existingScan) {
+      // Return detailed duplicate scan error with timestamp
+      const error = new EdgeCaseError('Asset already scanned in this session', {
+        duplicateScan: {
+          assetId,
+          assetNumber: existingScan.assetNumber,
+          scannedAt: existingScan.scannedAt,
+          scannedBy: existingScan.scannedByName,
+        },
+      });
+      throw error;
     }
     
     // Check if session is still active
@@ -1078,24 +2483,160 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     });
   }
 
-  async getSavedViews(_userId: string): Promise<SavedView[]> {
-    throw new Error('Saved views not implemented - Phase 10 (US10)');
+  // ============================================================================
+  // Saved Views (User Story 9)
+  // ============================================================================
+
+  private async getSavedViewsCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let category = categories.find(cat => cat.name === '__SavedViews__');
+    
+    if (!category) {
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__SavedViews__',
+        shorty: 'savedviews_' + Date.now().toString().substring(-4),
+        description: 'Internal: User saved view configurations',
+        data: null,
+      };
+      
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      category = this.mapToAssetCategory(created);
+    }
+    
+    return category;
   }
 
-  async getSavedView(_id: string): Promise<SavedView> {
-    throw new Error('Saved views not implemented - Phase 10 (US10)');
+  private mapToSavedView(dataValue: unknown): SavedView {
+    const value = dataValue as { id: string; value: string };
+    const parsed = JSON.parse(value.value) as SavedView;
+    
+    return {
+      ...parsed,
+      id: value.id,
+    };
   }
 
-  async createSavedView(_data: SavedViewCreate): Promise<SavedView> {
-    throw new Error('Saved views not implemented - Phase 10 (US10)');
+  async getSavedViews(userId: string): Promise<SavedView[]> {
+    const category = await this.getSavedViewsCategory();
+    const dataValues = await this.apiClient.getDataValues(this.moduleId, category.id);
+    
+    const allViews = dataValues.map(dv => this.mapToSavedView(dv));
+    
+    // Filter to only views owned by this user or public views
+    return allViews.filter(view => view.ownerId === userId || view.isPublic);
   }
 
-  async updateSavedView(_id: string, _data: Partial<SavedView>): Promise<SavedView> {
-    throw new Error('Saved views not implemented - Phase 10 (US10)');
+  async createSavedView(data: SavedViewCreate): Promise<SavedView> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getSavedViewsCategory();
+    
+    const now = new Date().toISOString();
+    const savedView: SavedView = {
+      id: '', // Will be set by ChurchTools
+      ...data,
+      createdAt: now,
+      lastModifiedAt: now,
+    };
+    
+    const dataValue = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(savedView),
+    };
+    
+    const created = await this.apiClient.createDataValue(this.moduleId, category.id, dataValue);
+    const createdValue = created as { id: string; value: string };
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'asset', // Using 'asset' as generic type for change history
+      entityId: createdValue.id,
+      action: 'created',
+      newValue: `Saved view: ${data.name}`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return this.mapToSavedView(createdValue);
   }
 
-  async deleteSavedView(_id: string): Promise<void> {
-    throw new Error('Saved views not implemented - Phase 10 (US10)');
+  async updateSavedView(id: string, updates: Partial<SavedView>): Promise<SavedView> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getSavedViewsCategory();
+    
+    // Get current view
+    const dataValues = await this.apiClient.getDataValues(this.moduleId, category.id);
+    const current = dataValues.find(dv => (dv as { id: string }).id === id);
+    
+    if (!current) {
+      throw new Error(`Saved view with ID ${id} not found`);
+    }
+    
+    const currentView = this.mapToSavedView(current);
+    
+    // Only owner can update
+    if (currentView.ownerId !== user.id) {
+      throw new Error('Only the view owner can update this view');
+    }
+    
+    const updatedView: SavedView = {
+      ...currentView,
+      ...updates,
+      id, // Preserve ID
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    const dataValue = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedView),
+    };
+    
+    await this.apiClient.updateDataValue(this.moduleId, category.id, id, dataValue);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'asset', // Using 'asset' as generic type for change history
+      entityId: id,
+      action: 'updated',
+      newValue: `Saved view: ${updatedView.name}`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+    
+    return updatedView;
+  }
+
+  async deleteSavedView(id: string): Promise<void> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getSavedViewsCategory();
+    
+    // Get current view
+    const dataValues = await this.apiClient.getDataValues(this.moduleId, category.id);
+    const current = dataValues.find(dv => (dv as { id: string }).id === id);
+    
+    if (!current) {
+      throw new Error(`Saved view with ID ${id} not found`);
+    }
+    
+    const currentView = this.mapToSavedView(current);
+    
+    // Only owner can delete
+    if (currentView.ownerId !== user.id) {
+      throw new Error('Only the view owner can delete this view');
+    }
+    
+    await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+    
+    // Record change history
+    await this.recordChange({
+      entityType: 'asset', // Using 'asset' as generic type for change history
+      entityId: id,
+      action: 'deleted',
+      oldValue: `Saved view: ${currentView.name}`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
   }
 
   async getCurrentUser(): Promise<PersonInfo> {
@@ -1110,12 +2651,190 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     };
   }
 
-  async getPersonInfo(_personId: string): Promise<PersonInfo> {
-    throw new Error('Person info not implemented - Phase 9 (US9)');
+  async getPersonInfo(personId: string): Promise<PersonInfo> {
+    return await this.apiClient.getPersonInfo(personId);
   }
 
-  async searchPeople(_query: string): Promise<PersonInfo[]> {
-    throw new Error('Person search not implemented - Phase 9 (US9)');
+  async searchPeople(query: string): Promise<PersonInfo[]> {
+    return await this.apiClient.searchPeople(query);
   }
-  /* eslint-enable @typescript-eslint/require-await */
+
+  // ============================================================================
+  // Asset Prefix Management (E5 - Multiple Asset Prefixes)
+  // ============================================================================
+
+  /**
+   * Get all asset prefixes
+   */
+  async getAssetPrefixes(): Promise<import('../../types/entities').AssetPrefix[]> {
+    const category = await this.getAssetPrefixesCategory();
+    const dataValues = await this.apiClient.getDataValues(this.moduleId, category.id);
+    return dataValues.map(dv => this.mapToAssetPrefix(dv));
+  }
+
+  /**
+   * Get a single asset prefix by ID
+   */
+  async getAssetPrefix(id: string): Promise<import('../../types/entities').AssetPrefix> {
+    const category = await this.getAssetPrefixesCategory();
+    const dataValue = await this.apiClient.getDataValue(this.moduleId, category.id, id);
+    return this.mapToAssetPrefix(dataValue);
+  }
+
+  /**
+   * Create a new asset prefix
+   */
+  async createAssetPrefix(
+    data: import('../../types/entities').AssetPrefixCreate
+  ): Promise<import('../../types/entities').AssetPrefix> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getAssetPrefixesCategory();
+
+    // Validate prefix doesn't already exist
+    const existingPrefixes = await this.getAssetPrefixes();
+    if (existingPrefixes.some(p => p.prefix === data.prefix)) {
+      throw new Error(`Prefix "${data.prefix}" already exists`);
+    }
+
+    const dataValue = await this.apiClient.createDataValue(this.moduleId, category.id, {
+      prefix: data.prefix,
+      description: data.description,
+      color: data.color,
+      sequence: 0, // Start at 0, first asset will be 001
+      createdBy: user.id,
+      createdByName: `${user.firstName} ${user.lastName}`,
+      lastModifiedBy: user.id,
+      lastModifiedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    await this.recordChange({
+      entityType: 'asset-prefix',
+      entityId: (dataValue as { id: string }).id,
+      action: 'created',
+      newValue: `Prefix: ${data.prefix} - ${data.description}`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    return this.mapToAssetPrefix(dataValue);
+  }
+
+  /**
+   * Update an asset prefix
+   */
+  async updateAssetPrefix(
+    id: string,
+    data: import('../../types/entities').AssetPrefixUpdate
+  ): Promise<import('../../types/entities').AssetPrefix> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getAssetPrefixesCategory();
+    const current = await this.getAssetPrefix(id);
+
+    const dataValue = await this.apiClient.updateDataValue(this.moduleId, category.id, id, {
+      ...data,
+      lastModifiedBy: user.id,
+      lastModifiedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    await this.recordChange({
+      entityType: 'asset-prefix',
+      entityId: id,
+      action: 'updated',
+      oldValue: JSON.stringify(current),
+      newValue: JSON.stringify(data),
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    return this.mapToAssetPrefix(dataValue);
+  }
+
+  /**
+   * Delete an asset prefix
+   */
+  async deleteAssetPrefix(id: string): Promise<void> {
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getAssetPrefixesCategory();
+    const prefix = await this.getAssetPrefix(id);
+
+    await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+
+    await this.recordChange({
+      entityType: 'asset-prefix',
+      entityId: id,
+      action: 'deleted',
+      oldValue: `Prefix: ${prefix.prefix} - ${prefix.description}`,
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+  }
+
+  /**
+   * Increment sequence number for a prefix (called when creating asset)
+   */
+  async incrementPrefixSequence(prefixId: string): Promise<number> {
+    const prefix = await this.getAssetPrefix(prefixId);
+    const newSequence = prefix.sequence + 1;
+    
+    await this.updateAssetPrefix(prefixId, {
+      sequence: newSequence,
+    });
+    
+    return newSequence;
+  }
+
+  // ============================================================================
+  // Private Helper Methods for Asset Prefixes
+  // ============================================================================
+
+  private async getAssetPrefixesCategory() {
+    // Try to get existing category first
+    try {
+      const categories = await this.apiClient.getDataCategories(this.moduleId);
+      const category = (categories as Array<{ id: string; name: string }>).find(
+        c => c.name === 'asset_prefixes'
+      );
+      if (category) {
+        return category;
+      }
+    } catch {
+      // Category doesn't exist, create it
+    }
+
+    // Create the category
+    return await this.apiClient.createDataCategory(this.moduleId, {
+      name: 'asset_prefixes',
+      nameTranslated: 'Asset Prefixes',
+    }) as { id: string; name: string };
+  }
+
+  private mapToAssetPrefix(dataValue: unknown): import('../../types/entities').AssetPrefix {
+    const dv = dataValue as {
+      id: string;
+      prefix: string;
+      description: string;
+      color: string;
+      sequence: number;
+      createdBy: string;
+      createdByName: string;
+      createdAt: string;
+      lastModifiedBy: string;
+      lastModifiedByName: string;
+      lastModifiedAt: string;
+    };
+
+    return {
+      id: dv.id,
+      prefix: dv.prefix,
+      description: dv.description,
+      color: dv.color,
+      sequence: dv.sequence || 0,
+      createdBy: dv.createdBy,
+      createdByName: dv.createdByName,
+      createdAt: dv.createdAt,
+      lastModifiedBy: dv.lastModifiedBy,
+      lastModifiedByName: dv.lastModifiedByName,
+      lastModifiedAt: dv.lastModifiedAt,
+    };
+  }
 }

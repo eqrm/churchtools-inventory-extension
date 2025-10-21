@@ -1,24 +1,21 @@
 import { Box, Button, Group, Stack, Title } from '@mantine/core';
 import { DataTable } from 'mantine-datatable';
-import { IconPlus } from '@tabler/icons-react';
 import { useStockTakeSessions } from '../../hooks/useStockTake';
 import type { StockTakeSession, StockTakeStatus } from '../../types/entities';
 import { formatDateOnly } from '../../utils/formatters';
 
 interface StockTakeSessionListProps {
   onView?: (session: StockTakeSession) => void;
-  onCreateNew?: () => void;
   initialStatus?: StockTakeStatus;
 }
 
 /**
  * StockTakeSessionList component - Display stock take sessions (T151)
- * Minimal implementation for task completion
+ * Enhanced for E6: Removed duplicate New Stock Take button (T276)
  */
 /* eslint-disable max-lines-per-function */
 export function StockTakeSessionList({
   onView,
-  onCreateNew,
   initialStatus,
 }: StockTakeSessionListProps) {
   const filters = initialStatus ? { status: initialStatus } : undefined;
@@ -29,11 +26,6 @@ export function StockTakeSessionList({
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={2}>Stock Take Sessions</Title>
-          {onCreateNew && (
-            <Button leftSection={<IconPlus size={16} />} onClick={onCreateNew}>
-              New Stock Take
-            </Button>
-          )}
         </Group>
 
         <DataTable
@@ -41,6 +33,11 @@ export function StockTakeSessionList({
           striped
           highlightOnHover
           records={sessions}
+          onRowClick={({ record }) => {
+            // Default action on row click: View session
+            onView?.(record);
+          }}
+          rowStyle={() => ({ cursor: 'pointer' })}
           columns={[
             {
               accessor: 'startDate',
@@ -59,7 +56,14 @@ export function StockTakeSessionList({
               accessor: 'actions',
               title: '',
               render: (session) => (
-                <Button size="xs" variant="subtle" onClick={() => onView?.(session)}>
+                <Button 
+                  size="xs" 
+                  variant="subtle" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onView?.(session);
+                  }}
+                >
                   View
                 </Button>
               ),

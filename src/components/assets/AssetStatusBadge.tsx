@@ -17,7 +17,8 @@ const STATUS_CONFIG: Record<AssetStatus, { color: string; label: string }> = {
 };
 
 export function AssetStatusBadge({ status, size = 'sm' }: AssetStatusBadgeProps) {
-  const config = STATUS_CONFIG[status];
+  // Handle undefined, null, or invalid status values
+  const config = STATUS_CONFIG[status] || { color: 'gray', label: status || 'Unknown' };
   
   return (
     <Badge color={config.color} size={size} variant="filled">
