@@ -26,7 +26,7 @@ type ScanMode = 'keyboard' | 'camera';
  * - Buffer management for rapid character input
  * - Cleanup on unmount
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function BarcodeScanner({
   onScan,
   onError,

@@ -21,7 +21,7 @@ interface OptionalEnvVars {
  * Validates that all required environment variables are set
  * @throws {Error} If any required environment variable is missing
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
   const missing: string[] = [];
   

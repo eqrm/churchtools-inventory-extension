@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { Container, Stack, Title, Text, Card, Grid, Group } from '@mantine/core';
 import { IconBox, IconCategory, IconHistory, IconTrendingUp } from '@tabler/icons-react';
 import { useAssets } from '../hooks/useAssets';

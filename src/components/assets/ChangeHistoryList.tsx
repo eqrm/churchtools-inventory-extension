@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { Badge, Card, Group, Stack, Text, Timeline, Title } from '@mantine/core';
 import { useChangeHistory } from '../../hooks/useChangeHistory';
 import { formatChangeEntry, getActionColor } from '../../utils/historyFormatters';

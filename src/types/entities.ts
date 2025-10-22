@@ -118,6 +118,17 @@ export interface Asset {
     personName: string
     since: ISOTimestamp
   }
+  // FR-017: Control booking eligibility
+  bookable: boolean
+  // FR-048-051: Asset images
+  photos?: Array<{
+    id: UUID
+    url: string
+    thumbnailUrl?: string
+    isMain: boolean
+    uploadedAt: ISOTimestamp
+    uploadedBy: string
+  }>
   isParent: boolean
   parentAssetId?: UUID
   childAssetIds?: UUID[]
@@ -145,6 +156,7 @@ export type AssetStatus =
   | 'installed'
   | 'sold'
   | 'destroyed'
+  | 'deleted'
 
 export type AssetCreate = Omit<
   Asset,
@@ -194,13 +206,23 @@ export interface Booking {
     id: UUID
     name: string
   }
-  startDate: ISODate
-  endDate: ISODate
+  // FR-010: Book on behalf of others
+  bookedById: string              // Person who created the booking (ChurchTools person ID)
+  bookedByName?: string           // Cache of person name
+  bookingForId: string            // Person using the asset (can be same or different)
+  bookingForName?: string         // Cache of person name
+  // FR-012-014: Smart date and time booking
+  bookingMode: 'single-day' | 'date-range'
+  date?: ISODate                  // Single date (if bookingMode = 'single-day')
+  startTime?: string              // Start time "HH:mm" (if bookingMode = 'single-day')
+  endTime?: string                // End time "HH:mm" (if bookingMode = 'single-day')
+  startDate: ISODate              // Start date (always set, also used for date-range)
+  endDate: ISODate                // End date (always set, same as startDate for single-day)
   purpose: string
   notes?: string
   status: BookingStatus
-  requestedBy: string
-  requestedByName: string
+  requestedBy: string             // Deprecated: use bookedById
+  requestedByName: string         // Deprecated: use bookedByName
   approvedBy?: string
   approvedByName?: string
   checkedOutAt?: ISOTimestamp
@@ -220,10 +242,11 @@ export interface Booking {
 export type BookingStatus =
   | 'pending'
   | 'approved'
+  | 'declined'      // FR-018: When approver rejects booking
   | 'active'
   | 'completed'
   | 'overdue'
-  | 'cancelled'
+  | 'cancelled'     // FR-019: When requester cancels own booking
 
 export interface ConditionAssessment {
   rating: 'excellent' | 'good' | 'fair' | 'poor' | 'damaged'
@@ -254,6 +277,8 @@ export interface BookingFilters {
   kitId?: UUID
   status?: BookingStatus | BookingStatus[]
   requestedBy?: string
+  bookingForId?: string  // Filter by who the booking is for
+  bookedById?: string    // Filter by who created the booking
   dateRange?: {
     start: ISODate
     end: ISODate
@@ -408,7 +433,7 @@ export interface StockTakeSession {
   }[]
   conductedBy: string
   conductedByName: string
-  notes?: string
+  nameReason?: string
   createdAt: ISOTimestamp
   lastModifiedAt: ISOTimestamp
 }

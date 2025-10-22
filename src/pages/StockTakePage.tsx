@@ -31,7 +31,7 @@ import type { StockTakeSession, AssetStatus } from '../types/entities';
  * - T279: Selective field updates based on toggles
  * - T280: Value change UI with notifications
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function StockTakePage() {
   const [createModalOpened, setCreateModalOpened] = useState(false);
   const [viewingSessionId, setViewingSessionId] = useState<string | null>(null);

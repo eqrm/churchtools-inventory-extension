@@ -7,6 +7,7 @@ import { Group, Button } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useApproveBooking, useRejectBooking } from '../../hooks/useBookings'
 import type { UUID } from '../../types/entities'
+import { bookingStrings } from '../../i18n/bookingStrings'
 
 interface ApprovalButtonsProps {
   bookingId: UUID
@@ -22,15 +23,15 @@ export function ApprovalButtons({ bookingId, onApproved, onRejected }: ApprovalB
     try {
       await approveMutation.mutateAsync(bookingId)
       notifications.show({
-        title: 'Genehmigt',
-        message: 'Buchung wurde genehmigt',
+        title: bookingStrings.actions.approve,
+        message: bookingStrings.messages.bookingApproved,
         color: 'green',
       })
       onApproved?.()
     } catch (error) {
       notifications.show({
-        title: 'Fehler',
-        message: error instanceof Error ? error.message : 'Fehler beim Genehmigen',
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Error approving booking',
         color: 'red',
       })
     }
@@ -38,17 +39,17 @@ export function ApprovalButtons({ bookingId, onApproved, onRejected }: ApprovalB
 
   const handleReject = async () => {
     try {
-      await rejectMutation.mutateAsync({ bookingId, reason: 'Abgelehnt durch Admin' })
+      await rejectMutation.mutateAsync({ bookingId, reason: 'Declined by admin' })
       notifications.show({
-        title: 'Abgelehnt',
-        message: 'Buchung wurde abgelehnt',
+        title: bookingStrings.actions.decline,
+        message: bookingStrings.messages.bookingDeclined,
         color: 'orange',
       })
       onRejected?.()
     } catch (error) {
       notifications.show({
-        title: 'Fehler',
-        message: error instanceof Error ? error.message : 'Fehler beim Ablehnen',
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Error declining booking',
         color: 'red',
       })
     }
@@ -57,10 +58,10 @@ export function ApprovalButtons({ bookingId, onApproved, onRejected }: ApprovalB
   return (
     <Group gap="sm">
       <Button onClick={handleApprove} color="green" loading={approveMutation.isPending}>
-        Genehmigen
+        {bookingStrings.actions.approve}
       </Button>
       <Button onClick={handleReject} color="red" variant="subtle" loading={rejectMutation.isPending}>
-        Ablehnen
+        {bookingStrings.actions.decline}
       </Button>
     </Group>
   )

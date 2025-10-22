@@ -18,8 +18,8 @@ export function StartStockTakeForm({ onSuccess, onCancel }: StartStockTakeFormPr
   const { data: currentUser } = useCurrentUser();
   const createSession = useCreateStockTakeSession();
 
-  const form = useForm<{ notes: string }>({
-    initialValues: { notes: '' },
+  const form = useForm<{ nameReason: string }>({
+    initialValues: { nameReason: '' },
   });
 
   const handleSubmit = form.onSubmit(async (values) => {
@@ -31,7 +31,7 @@ export function StartStockTakeForm({ onSuccess, onCancel }: StartStockTakeFormPr
       scope: { type: 'all' },
       conductedBy: currentUser.id,
       conductedByName: `${currentUser.firstName} ${currentUser.lastName}`,
-      notes: values.notes || undefined,
+      nameReason: values.nameReason || undefined,
     };
 
     const session = await createSession.mutateAsync(sessionData);
@@ -47,9 +47,9 @@ export function StartStockTakeForm({ onSuccess, onCancel }: StartStockTakeFormPr
             You can update asset fields during scanning in the next step.
           </Text>
           <Textarea
-            label="Notes"
+            label="Name/Reason"
             placeholder="Purpose of stock take..."
-            {...form.getInputProps('notes')}
+            {...form.getInputProps('nameReason')}
           />
           <Group justify="flex-end">
             {onCancel && <Button variant="subtle" onClick={onCancel}>Cancel</Button>}

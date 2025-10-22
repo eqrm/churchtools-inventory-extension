@@ -127,7 +127,7 @@ function LabelCodes({ barcodeUrl, qrCodeUrl, assetNumber, isLoading }: LabelCode
  * - Optimized CSS for physical label printing
  * - Typical label size: 4" x 6" (102mm x 152mm)
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function AssetLabelPrint({ asset, onClose }: AssetLabelPrintProps) {
   const [barcodeUrl, setBarcodeUrl] = useState<string | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);

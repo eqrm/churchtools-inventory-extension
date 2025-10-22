@@ -40,8 +40,8 @@ export default ({ mode }: { mode: string }) => {
                     },
                 },
             },
-            // Chunk size warning limit (200 KB = 200,000 bytes)
-            chunkSizeWarningLimit: 200,
+            // Chunk size warning limit (5 MB = 5,000 KB for ChurchTools 20MB deployment limit)
+            chunkSizeWarningLimit: 5000,
         },
         optimizeDeps: {
             // Pre-bundle dependencies for faster dev server

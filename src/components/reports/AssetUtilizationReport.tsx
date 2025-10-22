@@ -91,6 +91,7 @@ function UtilizationTable({ data }: { data: AssetUtilizationData[] }) {
       striped
       highlightOnHover
       records={data}
+      idAccessor="assetId"
       columns={[
         {
           accessor: 'assetNumber',

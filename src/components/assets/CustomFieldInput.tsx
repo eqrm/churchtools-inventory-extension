@@ -1,4 +1,5 @@
-/* eslint-disable max-lines-per-function */
+ 
+import { useState, useEffect } from 'react';
 import {
   TextInput,
   Textarea,
@@ -9,6 +10,8 @@ import {
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import type { CustomFieldDefinition, CustomFieldValue } from '../../types/entities';
+import { PersonPicker } from '../common/PersonPicker';
+import { personSearchService, type PersonSearchResult } from '../../services/person/PersonSearchService';
 
 interface CustomFieldInputProps {
   field: CustomFieldDefinition;
@@ -26,6 +29,30 @@ export function CustomFieldInput({
   disabled,
 }: CustomFieldInputProps) {
   const { type, name, required, helpText, options, validation } = field;
+
+  // State for person-reference field
+  const [personData, setPersonData] = useState<PersonSearchResult | null>(null);
+  const [loadingPerson, setLoadingPerson] = useState(false);
+
+  // Fetch person data when value changes (for person-reference fields)
+  useEffect(() => {
+    if (type === 'person-reference' && value && typeof value === 'string') {
+      setLoadingPerson(true);
+      personSearchService.getPersonById(value)
+        .then((person) => {
+          setPersonData(person);
+        })
+        .catch((err) => {
+          console.error('Failed to load person data:', err);
+          setPersonData(null);
+        })
+        .finally(() => {
+          setLoadingPerson(false);
+        });
+    } else if (type !== 'person-reference' || !value) {
+      setPersonData(null);
+    }
+  }, [type, value]);
 
   // Helper to validate input
   const getValidationProps = () => {
@@ -161,16 +188,31 @@ export function CustomFieldInput({
       );
 
     case 'person-reference':
-      // TODO: Implement person search/select when person API is available (Phase 9)
+      // Person search integrated from Phase 4
       return (
-        <TextInput
-          {...commonProps}
-          value={(value as string) || ''}
-          onChange={(e) => {
-            onChange(e.currentTarget.value);
+        <PersonPicker
+          label={name}
+          placeholder="Search for person..."
+          value={loadingPerson ? {
+            id: String(value),
+            firstName: '',
+            lastName: '',
+            displayName: 'Loading...',
+            email: '',
+            avatarUrl: undefined,
+          } : personData}
+          onChange={(person) => {
+            if (person) {
+              setPersonData(person);
+              onChange(person.id);
+            } else {
+              setPersonData(null);
+              onChange('');
+            }
           }}
-          placeholder="Person ID (search coming in Phase 9)"
-          description="Note: Person search will be implemented in Phase 9"
+          required={required}
+          error={error}
+          disabled={disabled}
         />
       );
 

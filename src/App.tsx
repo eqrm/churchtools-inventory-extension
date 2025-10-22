@@ -79,7 +79,7 @@ class ErrorBoundary extends Component<
 /**
  * Main application component with routing and global scanner
  */
-/* eslint-disable max-lines-per-function */
+ 
 function App() {
   const [scanModalOpened, setScanModalOpened] = useState(false);
 
@@ -105,6 +105,7 @@ function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter
+        basename={import.meta.env.BASE_URL}
         future={{
           v7_startTransition: true,
           v7_relativeSplatPath: true,
@@ -128,6 +129,7 @@ function App() {
               <Route path="/kits/:id" element={<KitDetailPage />} />
               <Route path="/stock-take" element={<StockTakePage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/reports/:reportId" element={<ReportsPage />} />
               <Route path="/maintenance" element={<MaintenancePage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

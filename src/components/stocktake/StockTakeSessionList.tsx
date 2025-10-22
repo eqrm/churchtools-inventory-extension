@@ -13,7 +13,7 @@ interface StockTakeSessionListProps {
  * StockTakeSessionList component - Display stock take sessions (T151)
  * Enhanced for E6: Removed duplicate New Stock Take button (T276)
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function StockTakeSessionList({
   onView,
   initialStatus,

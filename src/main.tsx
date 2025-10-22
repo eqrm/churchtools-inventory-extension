@@ -7,6 +7,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { theme } from './theme';
 import { validateEnvironment } from './utils/envValidation';
+import { initializeOfflineDb } from './utils/offline-db';
 import App from './App';
 
 // Import Mantine styles
@@ -58,6 +59,9 @@ const password = import.meta.env.VITE_PASSWORD;
 if (import.meta.env.MODE === 'development' && username && password) {
     await churchtoolsClient.post('/login', { username, password });
 }
+
+// Initialize offline database (T019 - IndexedDB setup for offline stocktake)
+await initializeOfflineDb();
 
 // TanStack Query client configuration (T218 - optimized cache times)
 const queryClient = new QueryClient({

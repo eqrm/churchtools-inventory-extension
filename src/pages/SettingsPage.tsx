@@ -1,7 +1,6 @@
 import { Container, Stack, Tabs, Title } from '@mantine/core';
 import { IconAdjustments, IconBarcode, IconHash, IconMapPin } from '@tabler/icons-react';
 import { useState } from 'react';
-import { AssetPrefixSettings } from '../components/settings/AssetPrefixSettings';
 import { AssetPrefixList } from '../components/settings/AssetPrefixList';
 import { LocationSettings } from '../components/settings/LocationSettings';
 import { ScannerModelList } from '../components/settings/ScannerModelList';
@@ -29,7 +28,7 @@ export function SettingsPage() {
       <Stack gap="lg">
         <Title order={1}>Settings</Title>
 
-        <Tabs defaultValue="prefix">
+        <Tabs defaultValue="prefixes">
           <SettingsTabs
             scannerModels={scannerModels}
             onAddModel={handleAddModel}
@@ -120,9 +119,6 @@ function SettingsTabs({ scannerModels, onAddModel, onEditModel, onDeleteModel }:
   return (
     <>
       <Tabs.List>
-        <Tabs.Tab value="prefix" leftSection={<IconHash size={16} />}>
-          Asset Numbering
-        </Tabs.Tab>
         <Tabs.Tab value="prefixes" leftSection={<IconHash size={16} />}>
           Asset Prefixes
         </Tabs.Tab>
@@ -136,10 +132,6 @@ function SettingsTabs({ scannerModels, onAddModel, onEditModel, onDeleteModel }:
           General
         </Tabs.Tab>
       </Tabs.List>
-
-      <Tabs.Panel value="prefix" pt="md">
-        <AssetPrefixSettings />
-      </Tabs.Panel>
 
       <Tabs.Panel value="prefixes" pt="md">
         <AssetPrefixList />

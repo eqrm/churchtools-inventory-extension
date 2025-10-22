@@ -44,7 +44,7 @@ interface LocationFormValues {
  * - Display count of assets per location
  * - Prevent deletion if assets exist
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function LocationSettings() {
   const { data: assets = [] } = useAssets({});
   const [locations, setLocations] = useState<Location[]>(() => {

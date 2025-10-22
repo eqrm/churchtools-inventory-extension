@@ -3,6 +3,7 @@
  */
 
 import { Stack, Select, Textarea, Title } from '@mantine/core'
+import { bookingStrings } from '../../i18n/bookingStrings'
 
 interface ConditionAssessmentProps {
   rating?: 'excellent' | 'good' | 'fair' | 'poor' | 'damaged'
@@ -21,23 +22,23 @@ export function ConditionAssessment({
 }: ConditionAssessmentProps) {
   return (
     <Stack gap="md">
-      <Title order={4}>Zustandsbewertung</Title>
+      <Title order={4}>{bookingStrings.condition.title}</Title>
       <Select
-        label="Zustand"
+        label={bookingStrings.condition.rating}
         data={[
-          { value: 'excellent', label: 'Ausgezeichnet' },
-          { value: 'good', label: 'Gut' },
-          { value: 'fair', label: 'Akzeptabel' },
-          { value: 'poor', label: 'Schlecht' },
-          { value: 'damaged', label: 'Beschädigt' },
+          { value: 'excellent', label: bookingStrings.condition.excellent },
+          { value: 'good', label: bookingStrings.condition.good },
+          { value: 'fair', label: bookingStrings.condition.fair },
+          { value: 'poor', label: bookingStrings.condition.poor },
+          { value: 'damaged', label: bookingStrings.condition.damaged },
         ]}
         value={rating}
         onChange={(value) => onRatingChange?.(value || 'good')}
         disabled={readOnly}
       />
       <Textarea
-        label="Notizen"
-        placeholder="Beschädigungen, Probleme, oder Anmerkungen..."
+        label={bookingStrings.condition.notes}
+        placeholder={bookingStrings.condition.notesPlaceholder}
         value={notes}
         onChange={(e) => onNotesChange?.(e.currentTarget.value)}
         readOnly={readOnly}

@@ -137,7 +137,7 @@ function IconGrid({
   );
 }
 
-/* eslint-disable max-lines-per-function */
+ 
 export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
   const [opened, setOpened] = useState(false);
   const [search, setSearch] = useState('');

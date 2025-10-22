@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { useState } from 'react';
 import { AppShell, Burger, Group, NavLink, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';

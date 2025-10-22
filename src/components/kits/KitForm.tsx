@@ -49,7 +49,7 @@ export function KitForm({ kit, onSuccess, onCancel }: KitFormProps) {
     } else {
       form.setFieldValue('boundAssets', []);
     }
-  }, [form.values.type]);
+  }, [form.values.type, form]);
 
   const handleSubmit = async (values: KitCreate) => {
     try {

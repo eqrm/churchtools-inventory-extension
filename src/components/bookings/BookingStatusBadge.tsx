@@ -6,18 +6,20 @@
 
 import { Badge } from '@mantine/core'
 import type { BookingStatus } from '../../types/entities'
+import { bookingStrings } from '../../i18n/bookingStrings'
 
 interface BookingStatusBadgeProps {
   status: BookingStatus
 }
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string }> = {
-  pending: { label: 'Ausstehend', color: 'gray' },
-  approved: { label: 'Genehmigt', color: 'blue' },
-  active: { label: 'Aktiv', color: 'green' },
-  completed: { label: 'Abgeschlossen', color: 'teal' },
-  overdue: { label: 'Überfällig', color: 'red' },
-  cancelled: { label: 'Storniert', color: 'dark' },
+  pending: { label: bookingStrings.status.pending, color: 'gray' },
+  approved: { label: bookingStrings.status.approved, color: 'blue' },
+  declined: { label: bookingStrings.status.declined, color: 'red' },
+  active: { label: bookingStrings.status.active, color: 'green' },
+  completed: { label: bookingStrings.status.completed, color: 'teal' },
+  overdue: { label: bookingStrings.status.overdue, color: 'orange' },
+  cancelled: { label: bookingStrings.status.cancelled, color: 'dark' },
 }
 
 export function BookingStatusBadge({ status }: BookingStatusBadgeProps) {

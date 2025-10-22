@@ -102,11 +102,11 @@ export function StockTakeSummaryReport() {
           <Text fw={500}>Sitzung:</Text>
           <Select
             data={sessions.map((s) => ({
-              value: s.id,
+              value: String(s.id),
               label: `${s.startDate.substring(0, 10)} - ${s.status}`,
             }))}
-            value={sessionId}
-            onChange={(value) => setSelectedSessionId(value)}
+            value={sessionId || undefined}
+            onChange={(value) => setSelectedSessionId(value || null)}
             style={{ flex: 1, maxWidth: 400 }}
           />
         </Group>
@@ -122,6 +122,7 @@ export function StockTakeSummaryReport() {
         striped
         highlightOnHover
         records={summaryData.missingAssets}
+        idAccessor="assetId"
         columns={[
           {
             accessor: 'assetNumber',

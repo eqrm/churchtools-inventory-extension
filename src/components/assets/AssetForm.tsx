@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { useEffect, useMemo } from 'react';
 import {
   Button,
@@ -21,7 +21,9 @@ import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 import { useCategories, useCategory } from '../../hooks/useCategories';
 import { useCreateAsset, useCreateMultiAsset, useUpdateAsset } from '../../hooks/useAssets';
 import { useAssetPrefixes } from '../../hooks/useAssetPrefixes';
+import { useManufacturerModelData } from '../../hooks/useManufacturerModelData';
 import { CustomFieldInput } from './CustomFieldInput';
+import { CreatableSelect } from '../common/CreatableSelect';
 import type { Asset, AssetCreate, AssetStatus, CustomFieldValue } from '../../types/entities';
 import { validateCustomFieldValue } from '../../utils/validators';
 
@@ -43,6 +45,7 @@ interface AssetFormValues {
   parentAssetId?: string;
   isParent: boolean;
   quantity: number;
+  bookable: boolean; // T070: Allow asset to be booked
   customFieldValues: Record<string, CustomFieldValue>;
 }
 
@@ -60,6 +63,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
   const isEditing = Boolean(asset);
   const { data: categories = [] } = useCategories();
   const { data: prefixes = [] } = useAssetPrefixes();
+  const { manufacturers, models, addManufacturer, addModel } = useManufacturerModelData();
   const createAsset = useCreateAsset();
   const createMultiAsset = useCreateMultiAsset();
   const updateAsset = useUpdateAsset();
@@ -77,6 +81,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       parentAssetId: asset?.parentAssetId || '',
       isParent: asset?.isParent || false,
       quantity: 1,
+      bookable: asset?.bookable ?? true, // T070: Default to bookable
       customFieldValues: asset?.customFieldValues || {},
     },
     validate: {
@@ -150,6 +155,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
             status: values.status,
             location: values.location || undefined,
             parentAssetId: values.parentAssetId || undefined,
+            bookable: values.bookable, // T070: Include bookable status
             customFieldValues: values.customFieldValues,
             isParent: asset.isParent,
             childAssetIds: asset.childAssetIds,
@@ -185,6 +191,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
           isParent: values.isParent,
           parentAssetId: values.parentAssetId || undefined,
           childAssetIds: [],
+          bookable: values.bookable, // T070: Include bookable status
           customFieldValues: values.customFieldValues,
           prefixId: values.prefixId || undefined, // T272: Pass selected prefix
         };
@@ -316,6 +323,16 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
               />
             </Grid.Col>
 
+            {/* T070: Bookable checkbox for asset availability filtering */}
+            <Grid.Col span={{ base: 12, md: 6 }}>
+              <Checkbox
+                label="Allow Booking"
+                description="Enable this asset to be booked by users"
+                {...form.getInputProps('bookable', { type: 'checkbox' })}
+                mt="md"
+              />
+            </Grid.Col>
+
             <Grid.Col span={{ base: 12, md: 6 }}>
               <Select
                 label="Location"
@@ -342,18 +359,26 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <TextInput
+              <CreatableSelect
                 label="Manufacturer"
-                placeholder="Manufacturer name"
-                {...form.getInputProps('manufacturer')}
+                placeholder="Select or type manufacturer name"
+                description="Choose from existing manufacturers or type to create a new one"
+                data={manufacturers}
+                value={form.values.manufacturer || ''}
+                onChange={(value) => form.setFieldValue('manufacturer', value)}
+                onCreate={addManufacturer}
               />
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <TextInput
+              <CreatableSelect
                 label="Model"
-                placeholder="Model number or name"
-                {...form.getInputProps('model')}
+                placeholder="Select or type model name"
+                description="Choose from existing models or type to create a new one"
+                data={models}
+                value={form.values.model || ''}
+                onChange={(value) => form.setFieldValue('model', value)}
+                onCreate={addModel}
               />
             </Grid.Col>
 

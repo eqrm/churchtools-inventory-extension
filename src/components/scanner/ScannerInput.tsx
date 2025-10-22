@@ -19,7 +19,7 @@ interface ScannerInputProps {
  * - Auto-focus for quick entry
  * - Validation feedback
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function ScannerInput({
   onScan,
   placeholder = 'Enter asset number...',

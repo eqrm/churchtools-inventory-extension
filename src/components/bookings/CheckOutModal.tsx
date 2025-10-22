@@ -6,6 +6,7 @@ import { Modal, Stack, Button, Group, Text } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useCheckOut } from '../../hooks/useBookings'
 import type { UUID } from '../../types/entities'
+import { bookingStrings } from '../../i18n/bookingStrings'
 
 interface CheckOutModalProps {
   opened: boolean
@@ -20,20 +21,20 @@ export function CheckOutModal({ opened, onClose, bookingId, assetName }: CheckOu
   const handleCheckOut = async () => {
     try {
       await checkOut.mutateAsync({ bookingId })
-      notifications.show({ title: 'Erfolg', message: 'Equipment ausgegeben', color: 'green' })
+      notifications.show({ title: 'Success', message: bookingStrings.messages.equipmentIssued, color: 'green' })
       onClose()
     } catch (error) {
-      notifications.show({ title: 'Fehler', message: (error as Error).message, color: 'red' })
+      notifications.show({ title: 'Error', message: (error as Error).message, color: 'red' })
     }
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Equipment ausgeben">
+    <Modal opened={opened} onClose={onClose} title={bookingStrings.actions.issue}>
       <Stack gap="md">
-        <Text>Möchten Sie {assetName} ausgeben?</Text>
+        <Text>Do you want to check out {assetName}?</Text>
         <Group justify="flex-end">
-          <Button variant="subtle" onClick={onClose}>Abbrechen</Button>
-          <Button onClick={handleCheckOut} loading={checkOut.isPending} color="green">Ausgeben</Button>
+          <Button variant="subtle" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleCheckOut} loading={checkOut.isPending} color="green">{bookingStrings.actions.issue}</Button>
         </Group>
       </Stack>
     </Modal>

@@ -103,6 +103,7 @@ export function BookingHistoryReport() {
         striped
         highlightOnHover
         records={historyData.mostBookedAssets}
+        idAccessor="assetId"
         columns={[
           {
             accessor: 'assetNumber',
@@ -131,6 +132,7 @@ export function BookingHistoryReport() {
         striped
         highlightOnHover
         records={historyData.bookingsByMonth}
+        idAccessor="month"
         columns={[
           {
             accessor: 'month',

@@ -6,6 +6,7 @@ import { Card, Stack, Text, Badge, Group, Button } from '@mantine/core'
 import { IconCalendar } from '@tabler/icons-react'
 import { useBookings } from '../../hooks/useBookings'
 import { BookingStatusBadge } from '../bookings/BookingStatusBadge'
+import { PersonDisplay } from '../common/PersonDisplay'
 import type { UUID, Booking } from '../../types/entities'
 
 interface AssetBookingIndicatorProps {
@@ -27,7 +28,13 @@ function BookingItem({ booking }: { booking: Booking }) {
       <Stack gap={4} style={{ flex: 1 }}>
         <Group gap="xs">
           <BookingStatusBadge status={booking.status} />
-          <Text size="sm" fw={500}>{booking.requestedByName}</Text>
+          <PersonDisplay 
+            personId={booking.requestedBy} 
+            personName={booking.requestedByName} 
+            size="xs" 
+            textSize="sm" 
+            textWeight={500}
+          />
         </Group>
         <Text size="xs" c="dimmed">
           {formatDate(booking.startDate)} - {formatDate(booking.endDate)}

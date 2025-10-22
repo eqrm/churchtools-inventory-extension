@@ -5,8 +5,8 @@
  * @module components/kits/KitList
  */
 
-import { Badge, Button, Group, Stack, Text } from '@mantine/core';
-import { IconPlus, IconBoxMultiple } from '@tabler/icons-react';
+import { Badge, Stack } from '@mantine/core';
+import { IconBoxMultiple } from '@tabler/icons-react';
 import { DataTable } from 'mantine-datatable';
 import { useNavigate } from 'react-router-dom';
 import { useKits } from '../../hooks/useKits';
@@ -25,12 +25,6 @@ export function KitList() {
   if (isLoading) {
     return (
       <Stack>
-        <Group justify="space-between">
-          <Text size="xl" fw={700}>Equipment-Kits</Text>
-          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/kits/new')}>
-            Neues Kit
-          </Button>
-        </Group>
         <ListLoadingSkeleton rows={8} height={60} />
       </Stack>
     );
@@ -44,26 +38,13 @@ export function KitList() {
         title="Keine Kits vorhanden"
         message="Erstellen Sie Ihr erstes Equipment-Kit, um mehrere Assets zusammenzufassen."
         icon={<IconBoxMultiple size={48} stroke={1.5} />}
-        action={
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/kits/new')}
-          >
-            Neues Kit erstellen
-          </Button>
-        }
+        action={null}
       />
     );
   }
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Text size="xl" fw={700}>Equipment-Kits</Text>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/kits/new')}>
-          Neues Kit
-        </Button>
-      </Group>
       <DataTable
         columns={[
           { accessor: 'name', title: 'Name' },

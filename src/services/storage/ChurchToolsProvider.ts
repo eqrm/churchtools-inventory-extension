@@ -356,6 +356,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       customFieldValues: data.customFieldValues ?? previous.customFieldValues,
       parentAssetId: data.parentAssetId ?? previous.parentAssetId,
       isParent: data.isParent ?? previous.isParent,
+      bookable: data.bookable ?? previous.bookable,
       createdBy: previous.createdBy,
       createdByName: previous.createdByName,
       createdAt: previous.createdAt,
@@ -564,7 +565,9 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       changedByName: `${user.firstName} ${user.lastName}`,
     });
     
-    await this.apiClient.deleteDataValue(this.moduleId, asset.category.id, id);
+    // Soft delete: mark asset as deleted instead of removing data value
+    // (ChurchTools API doesn't support DELETE operations on individual data values)
+    await this.updateAsset(id, { status: 'deleted' });
   }
 
   /**
@@ -720,7 +723,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     // Parse data if it contains custom fields
     let customFields: CustomFieldDefinition[] = [];
-    if (cat['data'] && typeof cat['data'] === 'string') {
+    if (cat && cat['data'] && typeof cat['data'] === 'string') {
       try {
         customFields = JSON.parse(cat['data']) as CustomFieldDefinition[];
       } catch (error) {
@@ -780,6 +783,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       customFieldValues: (asset['customFieldValues'] || {}) as Record<string, string | number | boolean | string[]>,
       parentAssetId: asset['parentAssetId'] as string | undefined,
       isParent: ((asset['isParent'] as boolean | undefined) !== undefined ? asset['isParent'] as boolean : false),
+      bookable: ((asset['bookable'] as boolean | undefined) !== undefined ? asset['bookable'] as boolean : true),
       createdBy: asset['createdBy'] as string,
       createdByName: asset['createdByName'] as string,
       createdAt: asset['createdAt'] as string,
@@ -791,6 +795,11 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
 
   private applyAssetFilters(assets: Asset[], filters: AssetFilters): Asset[] {
     let filtered = assets;
+
+    // Exclude deleted assets by default unless explicitly requested
+    if (!filters.status || !filters.status.includes('deleted')) {
+      filtered = filtered.filter(a => a.status !== 'deleted');
+    }
 
     if (filters.categoryId) {
       filtered = filtered.filter(a => a.category.id === filters.categoryId);
@@ -1097,8 +1106,19 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       purpose: data.purpose || '',
       notes: data.notes,
       status: data.status || 'pending',
-      requestedBy: data.requestedBy || '',
-      requestedByName: data.requestedByName || '',
+      // Phase 5: Dual person tracking
+      bookedById: data.bookedById || data.requestedBy || '',
+      bookedByName: data.bookedByName || data.requestedByName || '',
+      bookingForId: data.bookingForId || data.requestedBy || '',
+      bookingForName: data.bookingForName || data.requestedByName || '',
+      // Phase 6: Smart date and time booking
+      bookingMode: data.bookingMode || 'date-range',
+      date: data.date,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      // Deprecated fields (kept for backward compatibility)
+      requestedBy: data.requestedBy || data.bookedById || '',
+      requestedByName: data.requestedByName || data.bookedByName || '',
       approvedBy: data.approvedBy,
       approvedByName: data.approvedByName,
       checkedOutAt: data.checkedOutAt,
@@ -1175,8 +1195,11 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       throw new Error('Asset-Referenz erforderlich');
     }
     
-    // Validate date range
-    if (new Date(data.endDate) <= new Date(data.startDate)) {
+    // Validate date range (allow same date for single-day bookings)
+    if (data.bookingMode === 'date-range' && new Date(data.endDate) <= new Date(data.startDate)) {
+      throw new Error('Enddatum muss nach dem Startdatum liegen');
+    }
+    if (data.bookingMode === 'single-day' && new Date(data.endDate) < new Date(data.startDate)) {
       throw new Error('Enddatum muss nach dem Startdatum liegen');
     }
     
@@ -1576,9 +1599,8 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
 
   async getKit(id: string): Promise<Kit | null> {
     try {
-      const category = await this.getKitsCategory();
-      const value = await this.apiClient.getDataValue(this.moduleId, category.id, id);
-      return this.mapToKit(value);
+      const kits = await this.getKits();
+      return kits.find(kit => kit.id === id) || null;
     } catch (error) {
       console.error('Error fetching kit:', error);
       return null;
@@ -1813,26 +1835,42 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   }
 
   async createMaintenanceRecord(recordData: MaintenanceRecordCreate): Promise<MaintenanceRecord> {
-    const category = await this.getMaintenanceRecordsCategory();
-    const user = await this.apiClient.getCurrentUser();
-    
-    const dataValue = await this.apiClient.createDataValue(
-      this.moduleId,
-      category.id,
-      recordData
-    );
-    
-    const record = this.mapToMaintenanceRecord(dataValue);
-    
-    await this.recordChange({
-      entityType: 'maintenance',
-      entityId: record.id,
-      action: 'created',
-      changedBy: user.id,
-      changedByName: `${user.firstName} ${user.lastName}`,
-    });
-    
-    return record;
+    try {
+      const category = await this.getMaintenanceRecordsCategory();
+      const user = await this.apiClient.getCurrentUser();
+      
+      // Prepare maintenance record data for storage
+      const maintenanceData = {
+        ...recordData,
+        createdAt: new Date().toISOString(),
+        lastModifiedAt: new Date().toISOString(),
+      };
+      
+      // ChurchTools expects: { dataCategoryId: number, value: string }
+      const valueData = {
+        dataCategoryId: Number(category.id),
+        value: JSON.stringify(maintenanceData),
+      };
+      
+      const created = await this.apiClient.createDataValue(this.moduleId, category.id, valueData);
+      const record = this.mapToMaintenanceRecord(created);
+      
+      await this.recordChange({
+        entityType: 'maintenance',
+        entityId: record.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+      
+      return record;
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to create maintenance record:', error);
+      if (error instanceof Error) {
+        throw new Error(`Could not create maintenance record: ${error.message}`);
+      }
+      throw new Error('Could not create maintenance record: Unknown error occurred');
+    }
   }
 
   async updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord> {
@@ -1844,16 +1882,23 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     const category = await this.getMaintenanceRecordsCategory();
     const user = await this.apiClient.getCurrentUser();
-    const updated = { ...existing, ...updates };
+    const updated = { ...existing, ...updates, lastModifiedAt: new Date().toISOString() };
     
-    const dataValue = await this.apiClient.updateDataValue(
+    // ChurchTools API requires: { id, dataCategoryId, value: string }
+    const dataValue = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updated),
+    };
+    
+    const updatedValue = await this.apiClient.updateDataValue(
       this.moduleId,
       category.id,
       id,
-      updated
+      dataValue
     );
     
-    const record = this.mapToMaintenanceRecord(dataValue);
+    const record = this.mapToMaintenanceRecord(updatedValue);
     
     await this.recordChange({
       entityType: 'maintenance',
@@ -1868,21 +1913,26 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
 
   private mapToMaintenanceRecord(val: unknown): MaintenanceRecord {
     const v = val as Record<string, unknown>;
+    
+    // ChurchTools returns data in 'value' field for custom data
+    const dataStr = (v['value'] || v['data']) as string | null;
+    const data = dataStr ? JSON.parse(dataStr) : v;
+    
     return {
-      id: v['id'] as string,
-      asset: v['asset'] as MaintenanceRecord['asset'],
-      type: v['type'] as MaintenanceRecord['type'],
-      date: v['date'] as string,
-      performedBy: v['performedBy'] as string,
-      performedByName: v['performedByName'] as string,
-      description: v['description'] as string,
-      notes: v['notes'] as string | undefined,
-      cost: v['cost'] as number | undefined,
-      photos: v['photos'] as string[] | undefined,
-      documents: v['documents'] as string[] | undefined,
-      nextDueDate: v['nextDueDate'] as string | undefined,
-      createdAt: v['created_at'] as string || new Date().toISOString(),
-      lastModifiedAt: v['modified_at'] as string || new Date().toISOString(),
+      id: String(v['id']),
+      asset: data['asset'] as MaintenanceRecord['asset'],
+      type: data['type'] as MaintenanceRecord['type'],
+      date: data['date'] as string,
+      performedBy: data['performedBy'] as string,
+      performedByName: data['performedByName'] as string,
+      description: data['description'] as string,
+      notes: data['notes'] as string | undefined,
+      cost: data['cost'] as number | undefined,
+      photos: data['photos'] as string[] | undefined,
+      documents: data['documents'] as string[] | undefined,
+      nextDueDate: data['nextDueDate'] as string | undefined,
+      createdAt: data['createdAt'] as string || new Date().toISOString(),
+      lastModifiedAt: data['lastModifiedAt'] as string || new Date().toISOString(),
     };
   }
 
@@ -2001,13 +2051,19 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const category = await this.getMaintenanceSchedulesCategory();
     const user = await this.apiClient.getCurrentUser();
     
-    const dataValue = await this.apiClient.createDataValue(
+    // ChurchTools expects: { dataCategoryId: number, value: string }
+    const dataValue = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(scheduleData),
+    };
+    
+    const created = await this.apiClient.createDataValue(
       this.moduleId,
       category.id,
-      scheduleData
+      dataValue
     );
     
-    const schedule = this.mapToMaintenanceSchedule(dataValue);
+    const schedule = this.mapToMaintenanceSchedule(created);
     
     await this.recordChange({
       entityType: 'maintenance',
@@ -2032,14 +2088,21 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const user = await this.apiClient.getCurrentUser();
     const updated = { ...existing, ...updates };
     
-    const dataValue = await this.apiClient.updateDataValue(
+    // ChurchTools API requires: { id, dataCategoryId, value: string }
+    const dataValue = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updated),
+    };
+    
+    await this.apiClient.updateDataValue(
       this.moduleId,
       category.id,
       id,
-      updated
+      dataValue
     );
     
-    const schedule = this.mapToMaintenanceSchedule(dataValue);
+    const schedule = this.mapToMaintenanceSchedule(updated);
     
     await this.recordChange({
       entityType: 'maintenance',
@@ -2676,9 +2739,12 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
    * Get a single asset prefix by ID
    */
   async getAssetPrefix(id: string): Promise<import('../../types/entities').AssetPrefix> {
-    const category = await this.getAssetPrefixesCategory();
-    const dataValue = await this.apiClient.getDataValue(this.moduleId, category.id, id);
-    return this.mapToAssetPrefix(dataValue);
+    const prefixes = await this.getAssetPrefixes();
+    const prefix = prefixes.find(p => p.id === id);
+    if (!prefix) {
+      throw new Error(`Asset prefix with ID ${id} not found`);
+    }
+    return prefix;
   }
 
   /**
@@ -2687,36 +2753,56 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   async createAssetPrefix(
     data: import('../../types/entities').AssetPrefixCreate
   ): Promise<import('../../types/entities').AssetPrefix> {
-    const user = await this.apiClient.getCurrentUser();
-    const category = await this.getAssetPrefixesCategory();
+    try {
+      const user = await this.apiClient.getCurrentUser();
+      const category = await this.getAssetPrefixesCategory();
 
-    // Validate prefix doesn't already exist
-    const existingPrefixes = await this.getAssetPrefixes();
-    if (existingPrefixes.some(p => p.prefix === data.prefix)) {
-      throw new Error(`Prefix "${data.prefix}" already exists`);
+      // Validate prefix doesn't already exist
+      const existingPrefixes = await this.getAssetPrefixes();
+      if (existingPrefixes.some(p => p.prefix === data.prefix)) {
+        throw new Error(`Prefix "${data.prefix}" already exists`);
+      }
+
+      // Prepare asset prefix data for storage
+      const prefixData = {
+        prefix: data.prefix,
+        description: data.description,
+        color: data.color,
+        sequence: 0, // Start at 0, first asset will be 001
+        createdBy: user.id,
+        createdByName: `${user.firstName} ${user.lastName}`,
+        lastModifiedBy: user.id,
+        lastModifiedByName: `${user.firstName} ${user.lastName}`,
+        createdAt: new Date().toISOString(),
+        lastModifiedAt: new Date().toISOString(),
+      };
+
+      // ChurchTools expects: { dataCategoryId: number, value: string }
+      const valueData = {
+        dataCategoryId: Number(category.id),
+        value: JSON.stringify(prefixData),
+      };
+
+      const created = await this.apiClient.createDataValue(this.moduleId, category.id, valueData);
+      const prefix = this.mapToAssetPrefix(created);
+
+      await this.recordChange({
+        entityType: 'asset-prefix',
+        entityId: prefix.id,
+        action: 'created',
+        newValue: `Prefix: ${data.prefix} - ${data.description}`,
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+
+      return prefix;
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to create asset prefix:', error);
+      if (error instanceof Error) {
+        throw new Error(`Could not create asset prefix: ${error.message}`);
+      }
+      throw new Error('Could not create asset prefix: Unknown error occurred');
     }
-
-    const dataValue = await this.apiClient.createDataValue(this.moduleId, category.id, {
-      prefix: data.prefix,
-      description: data.description,
-      color: data.color,
-      sequence: 0, // Start at 0, first asset will be 001
-      createdBy: user.id,
-      createdByName: `${user.firstName} ${user.lastName}`,
-      lastModifiedBy: user.id,
-      lastModifiedByName: `${user.firstName} ${user.lastName}`,
-    });
-
-    await this.recordChange({
-      entityType: 'asset-prefix',
-      entityId: (dataValue as { id: string }).id,
-      action: 'created',
-      newValue: `Prefix: ${data.prefix} - ${data.description}`,
-      changedBy: user.id,
-      changedByName: `${user.firstName} ${user.lastName}`,
-    });
-
-    return this.mapToAssetPrefix(dataValue);
   }
 
   /**
@@ -2730,11 +2816,24 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const category = await this.getAssetPrefixesCategory();
     const current = await this.getAssetPrefix(id);
 
-    const dataValue = await this.apiClient.updateDataValue(this.moduleId, category.id, id, {
+    // Merge update data with current prefix data
+    const updatedPrefixData = {
+      ...current,
       ...data,
       lastModifiedBy: user.id,
       lastModifiedByName: `${user.firstName} ${user.lastName}`,
-    });
+      lastModifiedAt: new Date().toISOString(),
+    };
+
+    // ChurchTools API requires: { id, dataCategoryId, value: string }
+    const dataValue = {
+      id: Number(id),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(updatedPrefixData),
+    };
+
+    const updated = await this.apiClient.updateDataValue(this.moduleId, category.id, id, dataValue);
+    const prefix = this.mapToAssetPrefix(updated);
 
     await this.recordChange({
       entityType: 'asset-prefix',
@@ -2746,7 +2845,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       changedByName: `${user.firstName} ${user.lastName}`,
     });
 
-    return this.mapToAssetPrefix(dataValue);
+    return prefix;
   }
 
   /**
@@ -2792,7 +2891,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     try {
       const categories = await this.apiClient.getDataCategories(this.moduleId);
       const category = (categories as Array<{ id: string; name: string }>).find(
-        c => c.name === 'asset_prefixes'
+        c => c.name === '__AssetPrefixes__'
       );
       if (category) {
         return category;
@@ -2801,40 +2900,49 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       // Category doesn't exist, create it
     }
 
-    // Create the category
-    return await this.apiClient.createDataCategory(this.moduleId, {
-      name: 'asset_prefixes',
-      nameTranslated: 'Asset Prefixes',
-    }) as { id: string; name: string };
+    // Create the category with required fields
+    const user = await this.apiClient.getCurrentUser();
+    const categoryData = {
+      customModuleId: Number(this.moduleId),
+      name: '__AssetPrefixes__',
+      shorty: 'assetprefixes_' + Date.now().toString().substring(-4),
+      description: 'System category for asset prefixes',
+      data: null,
+    };
+
+    const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+    const category = this.mapToAssetCategory(created);
+
+    await this.recordChange({
+      entityType: 'category',
+      entityId: category.id,
+      action: 'created',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    return category;
   }
 
   private mapToAssetPrefix(dataValue: unknown): import('../../types/entities').AssetPrefix {
-    const dv = dataValue as {
-      id: string;
-      prefix: string;
-      description: string;
-      color: string;
-      sequence: number;
-      createdBy: string;
-      createdByName: string;
-      createdAt: string;
-      lastModifiedBy: string;
-      lastModifiedByName: string;
-      lastModifiedAt: string;
-    };
-
+    const dv = dataValue as Record<string, unknown>;
+    
+    // ChurchTools returns data in 'value' field for custom data
+    const dataStr = (dv['value'] || dv['data']) as string | null;
+    const data = dataStr ? JSON.parse(dataStr) : dv;
+    
     return {
-      id: dv.id,
-      prefix: dv.prefix,
-      description: dv.description,
-      color: dv.color,
-      sequence: dv.sequence || 0,
-      createdBy: dv.createdBy,
-      createdByName: dv.createdByName,
-      createdAt: dv.createdAt,
-      lastModifiedBy: dv.lastModifiedBy,
-      lastModifiedByName: dv.lastModifiedByName,
-      lastModifiedAt: dv.lastModifiedAt,
+      id: String(dv['id']),
+      prefix: data['prefix'] as string,
+      description: data['description'] as string,
+      color: data['color'] as string,
+      sequence: (data['sequence'] as number) || 0,
+      createdBy: data['createdBy'] as string,
+      createdByName: data['createdByName'] as string,
+      createdAt: data['createdAt'] as string,
+      lastModifiedBy: data['lastModifiedBy'] as string,
+      lastModifiedByName: data['lastModifiedByName'] as string,
+      lastModifiedAt: data['lastModifiedAt'] as string,
     };
   }
 }
