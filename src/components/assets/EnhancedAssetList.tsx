@@ -1,0 +1,304 @@
+/**
+ * Enhanced AssetList with Phase 11 Integration (T209-T212)
+ * 
+ * Integrates ViewModeSelector, FilterBuilder, SavedViews, and view persistence
+ */
+
+import { useState, useMemo, useEffect } from 'react';
+import {
+  Button,
+  Card,
+  Group,
+  Menu,
+  Modal,
+  Stack,
+  Title,
+  Drawer,
+} from '@mantine/core';
+import {
+  IconFilter,
+  IconPlus,
+  IconDeviceFloppy,
+  IconBookmark,
+} from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import type { Asset, AssetFilters, SavedView } from '../../types/entities';
+import { useAssets } from '../../hooks/useAssets';
+import { useUIStore } from '../../stores/uiStore';
+import { ViewModeSelector } from '../reports/ViewModeSelector';
+import { FilterBuilder } from '../reports/FilterBuilder';
+import { SavedViewForm } from '../reports/SavedViewForm';
+import { SavedViewsList } from '../reports/SavedViewsList';
+import { AssetGalleryView } from './AssetGalleryView';
+import { AssetKanbanView } from './AssetKanbanView';
+import { AssetCalendarView } from './AssetCalendarView';
+import { applyFilters, sortAssets } from '../../utils/filterEvaluation';
+import { readFiltersFromUrl, updateUrlWithFilters } from '../../utils/urlFilters';
+
+// Import the original AssetList as AssetTableView
+import { AssetList as AssetTableView } from './AssetList';
+
+interface EnhancedAssetListProps {
+  onView?: (asset: Asset) => void;
+  onEdit?: (asset: Asset) => void;
+  onCreateNew?: () => void;
+}
+
+/**
+ * Enhanced AssetList with view modes, filters, and saved views
+ */
+export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAssetListProps) {
+  // T213: Use UI store for view preferences
+  const {
+    viewMode,
+    setViewMode,
+    viewFilters,
+    setViewFilters,
+    sortBy,
+    setSortBy,
+    sortDirection,
+    setSortDirection,
+    groupBy,
+    setGroupBy,
+  } = useUIStore();
+
+  // T210: Filter builder state
+  const [showFilterBuilder, setShowFilterBuilder] = useState(false);
+
+  // T211: Save view modal
+  const [showSaveView, setShowSaveView] = useState(false);
+
+  // T212: Saved views menu
+  const [showSavedViews, setShowSavedViews] = useState(false);
+
+  const { data: assets = [] } = useAssets();
+
+  // T200: Read filters from URL on mount
+  useEffect(() => {
+    const urlState = readFiltersFromUrl();
+    if (urlState.filters.length > 0) {
+      setViewFilters(urlState.filters);
+    }
+    if (urlState.viewMode) {
+      setViewMode(urlState.viewMode);
+    }
+    if (urlState.sortBy) {
+      setSortBy(urlState.sortBy);
+    }
+    if (urlState.sortDirection) {
+      setSortDirection(urlState.sortDirection);
+    }
+    if (urlState.groupBy) {
+      setGroupBy(urlState.groupBy);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // T200: Update URL when view state changes
+  useEffect(() => {
+    updateUrlWithFilters(
+      viewFilters,
+      viewMode,
+      sortBy || undefined,
+      sortDirection,
+      groupBy || undefined
+    );
+  }, [viewFilters, viewMode, sortBy, sortDirection, groupBy]);
+
+  // T197: Apply advanced filters
+  const filteredAssets = useMemo(() => {
+    if (viewFilters.length === 0) return assets;
+    return applyFilters(assets, viewFilters);
+  }, [assets, viewFilters]);
+
+  // T201: Apply sorting
+  const sortedAssets = useMemo(() => {
+    if (!sortBy) return filteredAssets;
+    return sortAssets(filteredAssets, sortBy, sortDirection);
+  }, [filteredAssets, sortBy, sortDirection]);
+
+  // T211: Handle save current view
+  const handleSaveCurrentView = () => {
+    setShowSaveView(true);
+  };
+
+    // T212: Handle load saved view
+  const handleLoadSavedView = (view: SavedView) => {
+    setViewMode(view.viewMode);
+    setViewFilters(view.filters);
+    if (view.sortBy) setSortBy(view.sortBy);
+    if (view.sortDirection) setSortDirection(view.sortDirection);
+    if (view.groupBy) setGroupBy(view.groupBy);
+    setShowSavedViews(false);
+    notifications.show({
+      title: 'Ansicht geladen',
+      message: `Ansicht "${view.name}" wurde angewendet`,
+      color: 'blue',
+    });
+  };
+
+  // Convert ViewFilters to AssetFilters for table view compatibility
+  const legacyFilters: AssetFilters = useMemo(() => {
+    const filters: AssetFilters = {};
+    for (const filter of viewFilters) {
+      if (filter.field === 'category.name' && filter.operator === 'equals') {
+        // Note: This is a simplified conversion - full implementation would need category ID lookup
+        filters.categoryId = String(filter.value);
+      } else if (filter.field === 'status' && filter.operator === 'equals') {
+        filters.status = String(filter.value) as AssetFilters['status'];
+      } else if (filter.field === 'location' && filter.operator === 'equals') {
+        filters.location = String(filter.value);
+      } else if (filter.field === 'name' && filter.operator === 'contains') {
+        filters.search = String(filter.value);
+      }
+    }
+    return filters;
+  }, [viewFilters]);
+
+  // Render view based on current mode
+  const renderView = () => {
+    switch (viewMode) {
+      case 'table':
+        return (
+          <AssetTableView
+            onView={onView}
+            onEdit={onEdit}
+            onCreateNew={undefined}
+            initialFilters={legacyFilters}
+          />
+        );
+      case 'gallery':
+        return <AssetGalleryView assets={sortedAssets} />;
+      case 'kanban':
+        return <AssetKanbanView assets={sortedAssets} />;
+      case 'calendar':
+        return <AssetCalendarView assets={sortedAssets} />;
+      case 'list':
+        // Fallback to table for now
+        return (
+          <AssetTableView
+            onView={onView}
+            onEdit={onEdit}
+            onCreateNew={undefined}
+            initialFilters={legacyFilters}
+          />
+        );
+      default:
+        return (
+          <AssetTableView
+            onView={onView}
+            onEdit={onEdit}
+            onCreateNew={undefined}
+            initialFilters={legacyFilters}
+          />
+        );
+    }
+  };
+
+  return (
+    <Stack gap="md">
+      {/* Header with ViewModeSelector and actions */}
+      <Group justify="space-between">
+        <Title order={2}>Inventar</Title>
+
+        <Group>
+          {/* T209: ViewModeSelector integration */}
+          <ViewModeSelector value={viewMode} onChange={setViewMode} />
+
+          {/* T212: Saved views quick access */}
+          <Menu position="bottom-end" shadow="md">
+            <Menu.Target>
+              <Button variant="default" leftSection={<IconBookmark size={16} />}>
+                Ansichten
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>Gespeicherte Ansichten</Menu.Label>
+              <Menu.Item onClick={() => setShowSavedViews(true)}>
+                Alle Ansichten anzeigen...
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+
+          {/* T210: Filter builder toggle */}
+          <Button
+            variant={showFilterBuilder ? 'filled' : 'default'}
+            leftSection={<IconFilter size={16} />}
+            onClick={() => setShowFilterBuilder(!showFilterBuilder)}
+          >
+            Filter {viewFilters.length > 0 && `(${viewFilters.length})`}
+          </Button>
+
+          {/* T211: Save current view button */}
+          <Button
+            variant="default"
+            leftSection={<IconDeviceFloppy size={16} />}
+            onClick={handleSaveCurrentView}
+            disabled={viewFilters.length === 0}
+          >
+            Ansicht speichern
+          </Button>
+
+          {onCreateNew && (
+            <Button leftSection={<IconPlus size={16} />} onClick={onCreateNew}>
+              Neu
+            </Button>
+          )}
+        </Group>
+      </Group>
+
+      {/* T210: Filter builder panel */}
+      {showFilterBuilder && (
+        <Card withBorder>
+          <FilterBuilder filters={viewFilters} onChange={setViewFilters} />
+        </Card>
+      )}
+
+      {/* Render current view mode */}
+      {renderView()}
+
+      {/* T211: Save view modal */}
+      <Modal
+        opened={showSaveView}
+        onClose={() => setShowSaveView(false)}
+        title="Ansicht speichern"
+        size="md"
+      >
+        <SavedViewForm
+          viewMode={viewMode}
+          filters={viewFilters}
+          sortBy={sortBy || undefined}
+          sortDirection={sortDirection}
+          groupBy={groupBy || undefined}
+          onSuccess={() => {
+            setShowSaveView(false);
+            notifications.show({
+              title: 'Erfolg',
+              message: 'Ansicht wurde gespeichert',
+              color: 'green',
+            });
+          }}
+          onCancel={() => setShowSaveView(false)}
+        />
+      </Modal>
+
+      {/* T212: Saved views drawer */}
+      <Drawer
+        opened={showSavedViews}
+        onClose={() => setShowSavedViews(false)}
+        title="Gespeicherte Ansichten"
+        position="right"
+        size="md"
+      >
+        <SavedViewsList
+          onSelectView={handleLoadSavedView}
+          onEditView={(view) => {
+            // Load view for editing
+            handleLoadSavedView(view);
+            setShowSaveView(true);
+          }}
+        />
+      </Drawer>
+    </Stack>
+  );
+}
