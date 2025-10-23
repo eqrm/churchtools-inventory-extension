@@ -58,14 +58,6 @@ export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
     );
   }
   
-  // Warn about optional variables
-  if (!import.meta.env.VITE_MODULE_ID) {
-    console.warn(
-      '[Config] VITE_MODULE_ID not set - will fetch from API using VITE_KEY.\n' +
-      'Set VITE_MODULE_ID in .env for faster startup.'
-    );
-  }
-  
   const environment = import.meta.env.VITE_ENVIRONMENT || 'development';
   if (!['development', 'production'].includes(environment)) {
     console.warn(

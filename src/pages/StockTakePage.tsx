@@ -14,6 +14,8 @@ import { useStorageProvider } from '../hooks/useStorageProvider';
 import { EdgeCaseError } from '../types/edge-cases';
 import { formatDistanceToNow } from '../utils/formatters';
 import type { StockTakeSession, AssetStatus } from '../types/entities';
+import { useMasterDataNames } from '../hooks/useMasterDataNames';
+import { MASTER_DATA_DEFINITIONS } from '../utils/masterData';
 
 /**
  * StockTakePage - Main page for stock take management
@@ -46,14 +48,12 @@ export function StockTakePage() {
   const [currentStatus, setCurrentStatus] = useState<AssetStatus | null>(null);
   const [currentCondition, setCurrentCondition] = useState<string>('');
 
-  // Load available locations from localStorage (for location dropdown)
-  const availableLocations = useMemo(() => {
-    const savedLocations = JSON.parse(
-      localStorage.getItem('assetLocations') || '[]'
-    ) as Array<{ name: string }>;
-    
-    return savedLocations.map((loc) => ({ value: loc.name, label: loc.name }));
-  }, []);
+  // Load available locations from master data (reactive to settings changes)
+  const locationNames = useMasterDataNames(MASTER_DATA_DEFINITIONS.locations);
+  const availableLocations = useMemo(
+    () => locationNames.map((name) => ({ value: name, label: name })),
+    [locationNames]
+  );
 
   // Fetch selected session details
   const { data: viewingSession } = useStockTakeSession(viewingSessionId || '');

@@ -5,7 +5,7 @@
  * @module components/kits/KitList
  */
 
-import { Badge, Stack } from '@mantine/core';
+import { Badge, Stack, Text } from '@mantine/core';
 import { IconBoxMultiple } from '@tabler/icons-react';
 import { DataTable } from 'mantine-datatable';
 import { useNavigate } from 'react-router-dom';

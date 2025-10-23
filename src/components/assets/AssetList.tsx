@@ -1,5 +1,5 @@
  
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
@@ -17,12 +17,10 @@ import {
 } from '@mantine/core';
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable';
 import {
-  IconArrowUp,
   IconDots,
   IconEdit,
   IconEye,
   IconFilter,
-  IconLayoutList,
   IconPlus,
   IconSearch,
   IconTrash,
@@ -64,16 +62,24 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'standalone', label: 'Standalone Assets Only' },
 ];
 
+interface AssetListRow extends Asset {
+  __depth: number;
+  __parentId?: string;
+  __hasVisibleChildren: boolean;
+  __isExpanded?: boolean;
+}
+
 export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: AssetListProps) {
   const navigate = useNavigate(); // T263 - E4: Router navigation for direct clicks
   const [filters, setFilters] = useState<AssetFilters>(initialFilters || {});
   const [showFilters, setShowFilters] = useState(false);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>('all');
   const [prefixFilter, setPrefixFilter] = useState<string>('all'); // T275: Prefix-based filtering
-  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Asset>>({
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<AssetListRow>>({
     columnAccessor: 'assetNumber',
     direction: 'asc',
   });
+  const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
   
   // T214: Pagination for large asset lists (performance optimization)
   const PAGE_SIZE = 50; // Show 50 rows per page for optimal performance
@@ -88,6 +94,33 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
   const addUndoAction = useUndoStore((state) => state.addAction);
   const getUndoAction = useUndoStore((state) => state.getAction);
   const removeUndoAction = useUndoStore((state) => state.removeAction);
+
+  useEffect(() => {
+    setExpandedParents((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+
+      assets
+        .filter((asset) => asset.isParent && (asset.childAssetIds?.length ?? 0) > 0)
+        .forEach((asset) => {
+          const existing = prev[asset.id];
+          next[asset.id] = existing ?? true;
+          if (existing === undefined) {
+            changed = true;
+          }
+        });
+
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true;
+      }
+
+      if (!changed) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [assets]);
 
   // T263 - E4: Handle row click for direct navigation
   const handleRowClick = (params: { record: Asset; index: number; event: React.MouseEvent }) => {
@@ -155,12 +188,69 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
     });
   }, [filteredAssets, sortStatus]);
 
-  // T214: Pagination for performance (only render current page)
-  const paginatedAssets = useMemo(() => {
+  const visibleChildrenMap = useMemo(() => {
+    const map: Record<string, Asset[]> = {};
+    for (const asset of sortedAssets) {
+      const parentId = asset.parentAssetId;
+      if (!parentId) continue;
+      if (!map[parentId]) {
+        map[parentId] = [];
+      }
+      map[parentId].push(asset);
+    }
+    return map;
+  }, [sortedAssets]);
+
+  const assetIdSet = useMemo(() => new Set(sortedAssets.map(asset => asset.id)), [sortedAssets]);
+
+  const topLevelAssets = useMemo(() => {
+    return sortedAssets.filter(asset => {
+      if (!asset.parentAssetId) return true;
+      return !assetIdSet.has(asset.parentAssetId);
+    });
+  }, [sortedAssets, assetIdSet]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(topLevelAssets.length / PAGE_SIZE));
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [page, topLevelAssets.length, PAGE_SIZE]);
+
+  const paginatedTopLevelAssets = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE;
-    return sortedAssets.slice(from, to);
-  }, [sortedAssets, page, PAGE_SIZE]);
+    return topLevelAssets.slice(from, to);
+  }, [topLevelAssets, page, PAGE_SIZE]);
+
+  const displayRecords = useMemo<AssetListRow[]>(() => {
+    const rows: AssetListRow[] = [];
+
+    const appendAsset = (asset: Asset, depth: number) => {
+      const children = visibleChildrenMap[asset.id] ?? [];
+      const hasVisibleChildren = children.length > 0;
+      const isExpanded = hasVisibleChildren ? (expandedParents[asset.id] ?? true) : undefined;
+
+      rows.push({
+        ...asset,
+        __depth: depth,
+        __parentId: asset.parentAssetId,
+        __hasVisibleChildren: hasVisibleChildren,
+        __isExpanded: isExpanded,
+      });
+
+      if (hasVisibleChildren && isExpanded) {
+        children.forEach(child => appendAsset(child, depth + 1));
+      }
+    };
+
+    paginatedTopLevelAssets.forEach(asset => {
+      const initialDepth = asset.parentAssetId ? 1 : 0;
+      appendAsset(asset, initialDepth);
+    });
+
+    return rows;
+  }, [expandedParents, paginatedTopLevelAssets, visibleChildrenMap]);
 
   const handleDelete = async (asset: Asset) => {
     // T102: Parent deletion validation
@@ -425,51 +515,83 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
       )}
 
       <Card withBorder>
-        <DataTable
+        <DataTable<AssetListRow>
           withTableBorder
           borderRadius="sm"
           striped
           highlightOnHover
-          records={paginatedAssets} // T214: Only render current page for performance
-          onRowClick={handleRowClick} // T263 - E4: Direct click navigation
-          rowStyle={() => ({ cursor: 'pointer' })} // T264 - E4: Visual feedback
-          // T214: Pagination configuration for large lists
-          totalRecords={sortedAssets.length}
+          records={displayRecords}
+          onRowClick={handleRowClick}
+          rowStyle={() => ({ cursor: 'pointer' })}
+          totalRecords={topLevelAssets.length}
           recordsPerPage={PAGE_SIZE}
           page={page}
           onPageChange={setPage}
-          paginationText={({ from, to, totalRecords }) => 
+          paginationText={({ from, to, totalRecords }) =>
             `Showing ${from} to ${to} of ${totalRecords} assets`
           }
           columns={[
             {
-              accessor: 'type',
+              accessor: '__expander',
               title: '',
-              width: 40,
+              width: 90,
               render: (asset) => {
-                if (asset.isParent) {
-                  return (
-                    <Group gap={4}>
-                      <IconLayoutList size={16} color="var(--mantine-color-blue-6)" />
-                      <Badge size="xs" color="blue" circle>
-                        {asset.childAssetIds?.length || 0}
+                const childCount = asset.childAssetIds?.length ?? 0;
+                const isExpanded = asset.__isExpanded ?? false;
+                const isParent = asset.isParent;
+
+                return (
+                  <Group gap="xs">
+                    {asset.__hasVisibleChildren ? (
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        aria-label={isExpanded ? 'Collapse sub assets' : 'Expand sub assets'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedParents((prev) => ({
+                            ...prev,
+                            [asset.id]: !(prev[asset.id] ?? true),
+                          }));
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          style={{
+                            display: 'inline-block',
+                            transform: isExpanded ? 'rotate(90deg)' : 'none',
+                            transition: 'transform 150ms ease',
+                            fontWeight: 600,
+                            fontSize: 14,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {'>'}
+                        </Box>
+                      </ActionIcon>
+                    ) : (
+                      <Box w={28} />
+                    )}
+                    {isParent && (
+                      <Badge size="sm" circle variant="filled" color="blue">
+                        {childCount}
                       </Badge>
-                    </Group>
-                  );
-                }
-                if (asset.parentAssetId) {
-                  return <IconArrowUp size={16} color="var(--mantine-color-gray-6)" />;
-                }
-                return null;
+                    )}
+                  </Group>
+                );
               },
             },
             {
               accessor: 'assetNumber',
               title: 'Asset #',
               sortable: true,
-              width: 120,
+              width: 140,
               render: (asset) => (
-                <Text fw={600} size="sm" pl={asset.parentAssetId ? 'md' : 0}>
+                <Text
+                  fw={600}
+                  size="sm"
+                  style={{ paddingLeft: `${asset.__depth * 16}px` }}
+                >
                   {asset.assetNumber}
                 </Text>
               ),
@@ -479,7 +601,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Name',
               sortable: true,
               render: (asset) => (
-                <Box>
+                <Box style={{ marginLeft: `${asset.__depth * 16}px` }}>
                   <Text fw={500}>{asset.name}</Text>
                   {asset.description && (
                     <Text size="xs" c="dimmed" lineClamp={1}>
@@ -496,9 +618,9 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               render: (asset) => {
                 const icon = asset.category.icon;
                 return (
-                  <Badge 
-                    variant="light" 
-                    color="blue" 
+                  <Badge
+                    variant="light"
+                    color="blue"
                     leftSection={icon ? <IconDisplay iconName={icon} size={14} /> : undefined}
                   >
                     {asset.category.name}
@@ -543,7 +665,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Maintenance',
               width: 120,
               render: (asset) => {
-                const schedule = maintenanceSchedules.find(s => s.assetId === asset.id);
+                const schedule = maintenanceSchedules.find((s) => s.assetId === asset.id);
                 return schedule ? <MaintenanceReminderBadge schedule={schedule} /> : null;
               },
             },
@@ -555,11 +677,11 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                 <Group gap={0} justify="flex-end">
                   <Menu position="bottom-end" shadow="md">
                     <Menu.Target>
-                      <ActionIcon 
-                        variant="subtle" 
+                      <ActionIcon
+                        variant="subtle"
                         color="gray"
                         onClick={(e) => {
-                          e.stopPropagation(); // T265 - E4: Stop event propagation
+                          e.stopPropagation();
                         }}
                       >
                         <IconDots size={16} />
@@ -571,7 +693,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         <Menu.Item
                           leftSection={<IconEye size={14} />}
                           onClick={(e) => {
-                            e.stopPropagation(); // T265 - E4: Stop event propagation
+                            e.stopPropagation();
                             onView(asset);
                           }}
                         >
@@ -582,7 +704,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         <Menu.Item
                           leftSection={<IconEdit size={14} />}
                           onClick={(e) => {
-                            e.stopPropagation(); // T265 - E4: Stop event propagation
+                            e.stopPropagation();
                             onEdit(asset);
                           }}
                         >
@@ -593,7 +715,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         color="red"
                         leftSection={<IconTrash size={14} />}
                         onClick={(e) => {
-                          e.stopPropagation(); // T265 - E4: Stop event propagation
+                          e.stopPropagation();
                           void handleDelete(asset);
                         }}
                         disabled={deleteAsset.isPending}
@@ -610,7 +732,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
           onSortStatusChange={setSortStatus}
           fetching={isLoading}
           minHeight={150}
-          noRecordsText={hasActiveFilters ? "No assets match your filters" : "No assets found"}
+          noRecordsText={hasActiveFilters ? 'No assets match your filters' : 'No assets found'}
         />
       </Card>
     </Stack>

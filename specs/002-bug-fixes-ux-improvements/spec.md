@@ -5,6 +5,8 @@
 **Status**: Draft  
 **Input**: User description: "Bug fixes and UX improvements from user testing: routing, person search, bookings, and data management enhancements"
 
+> NOTE: Per project constraints, photo upload/storage/gallery features and offline sync tasks are DEFERRED/REMOVED from the active implementation scope due to ChurchTools customdata size/line limitations. The specification retains historical references for traceability, but these features are not part of the active workplan and the codebase contains disabled stubs where appropriate. Re-introduction requires an approved migration plan and ChurchTools Files API support.
+
 ## Clarifications
 
 ### Session 2025-10-22

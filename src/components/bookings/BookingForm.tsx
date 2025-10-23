@@ -11,9 +11,11 @@
 import { useState, useEffect } from 'react'
 import { useForm } from '@mantine/form'
 import { Stack, TextInput, Textarea, Select, Button, Group, Text, SegmentedControl } from '@mantine/core'
-import { DatePickerInput, TimeInput } from '@mantine/dates'
+import { TimeInput } from '@mantine/dates'
+// date fields use DateField popovers
 import { notifications } from '@mantine/notifications'
 import { IconClock } from '@tabler/icons-react'
+import DateField from '../common/DateField'
 import { useAssets } from '../../hooks/useAssets'
 import { useKits } from '../../hooks/useKits'
 import { useCreateBooking, useUpdateBooking, useBookings } from '../../hooks/useBookings'
@@ -365,19 +367,18 @@ export function BookingForm({ booking, kitId, onSuccess, onCancel }: BookingForm
         {/* T059: Single date picker + start/end time pickers when mode = 'single-day' */}
         {form.values.bookingMode === 'single-day' && (
           <>
-            <DatePickerInput
-              label="Date"
-              placeholder="Select date"
-              value={form.values.date ? new Date(form.values.date) : null}
-              onChange={(date) => {
-                const dateStr = date?.toISOString().split('T')[0] || ''
-                form.setFieldValue('date', dateStr)
-                // Auto-populate startDate/endDate for compatibility
-                form.setFieldValue('startDate', dateStr)
-                form.setFieldValue('endDate', dateStr)
-              }}
-              required
-            />
+            <Group align="flex-end">
+              <DateField
+                placeholder="Start date"
+                value={form.values.date}
+                onChange={(iso) => {
+                  const dateStr = iso || ''
+                  form.setFieldValue('date', dateStr)
+                  form.setFieldValue('startDate', dateStr)
+                  form.setFieldValue('endDate', dateStr)
+                }}
+              />
+            </Group>
             <Group grow>
               <TimeInput
                 label="Start Time"
@@ -398,23 +399,18 @@ export function BookingForm({ booking, kitId, onSuccess, onCancel }: BookingForm
         {/* T060: Start/end date pickers + optional time pickers when mode = 'date-range' */}
         {form.values.bookingMode === 'date-range' && (
           <>
-            <DatePickerInput
-              type="range"
-              label="Date Range"
-              placeholder="Select start and end date"
-              value={[
-                form.values.startDate ? new Date(form.values.startDate) : null,
-                form.values.endDate ? new Date(form.values.endDate) : null,
-              ]}
-              onChange={(dates) => {
-                const [start, end] = dates
-                const startDate = start?.toISOString().split('T')[0] || ''
-                const endDate = end?.toISOString().split('T')[0] || ''
-                if (startDate) form.setFieldValue('startDate', startDate)
-                if (endDate) form.setFieldValue('endDate', endDate)
-              }}
-              required
-            />
+            <Group align="flex-end">
+              <DateField
+                placeholder="Start date"
+                value={form.values.startDate}
+                onChange={(iso) => form.setFieldValue('startDate', iso || '')}
+              />
+              <DateField
+                placeholder="End date"
+                value={form.values.endDate}
+                onChange={(iso) => form.setFieldValue('endDate', iso || '')}
+              />
+            </Group>
             <Group grow>
               <TimeInput
                 label="Start Time (optional)"

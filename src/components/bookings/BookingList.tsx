@@ -5,9 +5,10 @@
  * Supports filtering by status, date range, and requester.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Stack, Group, Select, TextInput, Button } from '@mantine/core'
-import { DatePickerInput } from '@mantine/dates'
+// Date range calendar uses react-day-picker via DateRangeCalendar
+import DateField from '../common/DateField'
 import { IconSearch, IconFilter, IconPlus, IconCalendarEvent } from '@tabler/icons-react'
 import { DataTable, type DataTableColumn } from 'mantine-datatable'
 import { useBookings } from '../../hooks/useBookings'
@@ -112,16 +113,14 @@ interface FiltersProps {
 }
 
 function BookingFilters({ searchQuery, onSearchChange, filters, onFiltersChange, onCreateClick, allBookings }: FiltersProps) {
-  const handleDateChange = (dates: [Date | null, Date | null]) => {
-    if (dates[0] && dates[1]) {
-      const start = dates[0].toISOString().split('T')[0]
-      const end = dates[1].toISOString().split('T')[0]
-      if (start && end) onFiltersChange({ ...filters, dateRange: { start, end } })
-    } else {
-      const { dateRange: _removed, ...rest } = filters
-      onFiltersChange(rest)
-    }
-  }
+  // Date range selection: keep a local start/end so fields show chosen values immediately
+  const [localStart, setLocalStart] = useState<string>(filters.dateRange?.start || '')
+  const [localEnd, setLocalEnd] = useState<string>(filters.dateRange?.end || '')
+
+  useEffect(() => {
+    setLocalStart(filters.dateRange?.start || '')
+    setLocalEnd(filters.dateRange?.end || '')
+  }, [filters.dateRange])
 
   // Build unique person lists from bookings
   const bookingForOptions = allBookings ? Array.from(
@@ -141,7 +140,7 @@ function BookingFilters({ searchQuery, onSearchChange, filters, onFiltersChange,
   ).sort((a, b) => a.label.localeCompare(b.label)) : []
 
   return (
-    <Group>
+    <Group align="center">
       <TextInput 
         placeholder="Search..." 
         leftSection={<IconSearch size={16} />} 
@@ -181,13 +180,45 @@ function BookingFilters({ searchQuery, onSearchChange, filters, onFiltersChange,
         clearable 
         searchable
       />
-      <DatePickerInput 
-        type="range" 
-        placeholder="Date" 
-        value={filters.dateRange ? [new Date(filters.dateRange.start), new Date(filters.dateRange.end)] : [null, null]} 
-        onChange={handleDateChange} 
-        clearable 
-      />
+      <Group align="center">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ minWidth: 180 }}>
+            <DateField
+              placeholder="Start date"
+              value={localStart}
+              onChange={(iso) => {
+                const newStart = iso || ''
+                setLocalStart(newStart)
+                const effectiveEnd = localEnd
+                if (newStart && effectiveEnd) {
+                  onFiltersChange({ ...filters, dateRange: { start: newStart, end: effectiveEnd } })
+                } else {
+                  // Keep other filters unchanged until both dates selected
+                  const { dateRange: _removed, ...rest } = filters
+                  onFiltersChange(rest)
+                }
+              }}
+            />
+          </div>
+          <div style={{ minWidth: 180 }}>
+            <DateField
+              placeholder="End date"
+              value={localEnd}
+              onChange={(iso) => {
+                const newEnd = iso || ''
+                setLocalEnd(newEnd)
+                const effectiveStart = localStart
+                if (effectiveStart && newEnd) {
+                  onFiltersChange({ ...filters, dateRange: { start: effectiveStart, end: newEnd } })
+                } else {
+                  const { dateRange: _removed, ...rest } = filters
+                  onFiltersChange(rest)
+                }
+              }}
+            />
+          </div>
+        </div>
+      </Group>
       {onCreateClick && <Button leftSection={<IconPlus size={16} />} onClick={onCreateClick}>New</Button>}
     </Group>
   )

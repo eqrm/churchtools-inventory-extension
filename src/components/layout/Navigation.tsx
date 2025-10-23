@@ -1,5 +1,3 @@
- 
-import { useState } from 'react';
 import { AppShell, Burger, Group, NavLink, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -11,12 +9,10 @@ import {
   IconSettings,
   IconCalendarEvent,
   IconPackage,
-  IconKeyboard,
   IconChartBar,
   IconTool,
 } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
-import { KeyboardShortcutsModal } from '../common/KeyboardShortcutsModal';
 
 interface NavigationProps {
   children: React.ReactNode;
@@ -25,7 +21,6 @@ interface NavigationProps {
 
 export function Navigation({ children, onScanClick }: NavigationProps) {
   const [opened, { toggle }] = useDisclosure();
-  const [shortcutsOpened, setShortcutsOpened] = useState(false);
   const location = useLocation();
 
   // Detect platform for correct keyboard shortcut display
@@ -167,25 +162,9 @@ export function Navigation({ children, onScanClick }: NavigationProps) {
             if (opened) toggle();
           }}
         />
-        
-        <NavLink
-          label="Keyboard Shortcuts"
-          description="View all shortcuts"
-          leftSection={<IconKeyboard size={20} />}
-          onClick={() => {
-            if (opened) toggle();
-            setShortcutsOpened(true);
-          }}
-        />
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>
-      
-      {/* T226: Keyboard Shortcuts Modal */}
-      <KeyboardShortcutsModal
-        opened={shortcutsOpened}
-        onClose={() => setShortcutsOpened(false)}
-      />
     </AppShell>
   );
 }

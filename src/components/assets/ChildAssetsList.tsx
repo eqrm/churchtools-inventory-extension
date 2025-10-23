@@ -2,9 +2,9 @@
  * T097 - US4: ChildAssetsList Component
  * Displays list of child assets on parent AssetDetail page
  */
-import { Badge, Button, Card, Group, Menu, Stack, Text, Title } from '@mantine/core';
-import { IconDots, IconLink, IconRefresh, IconTransfer, IconUsers } from '@tabler/icons-react';
-import { useState } from 'react';
+import { Badge, Button, Card, Group, Menu, Stack, Text, Title, Collapse, UnstyledButton, ActionIcon } from '@mantine/core';
+import { IconDots, IconLink, IconRefresh, IconTransfer, IconUsers, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssets } from '../../hooks/useAssets';
 import { AssetStatusBadge } from './AssetStatusBadge';
@@ -111,6 +111,17 @@ export function ChildAssetsList({ parentAsset }: ChildAssetsListProps) {
   const [bulkUpdateOpened, setBulkUpdateOpened] = useState(false);
   const [propagationOpened, setPropagationOpened] = useState(false);
   const [manageChildrenOpened, setManageChildrenOpened] = useState(false);
+  
+  // Collapsible state with localStorage persistence
+  const [isExpanded, setIsExpanded] = useState(() => {
+    const stored = localStorage.getItem(`childAssetsExpanded_${parentAsset.id}`);
+    return stored !== null ? JSON.parse(stored) : true; // Default to expanded
+  });
+
+  // Persist collapse state to localStorage
+  useEffect(() => {
+    localStorage.setItem(`childAssetsExpanded_${parentAsset.id}`, JSON.stringify(isExpanded));
+  }, [isExpanded, parentAsset.id]);
 
   const childAssets = allAssets.filter((asset) => asset.parentAssetId === parentAsset.id);
   if (childAssets.length === 0) return null;
@@ -127,20 +138,44 @@ export function ChildAssetsList({ parentAsset }: ChildAssetsListProps) {
       <ManageChildAssetsModal opened={manageChildrenOpened} onClose={() => setManageChildrenOpened(false)} parentAsset={parentAsset} currentChildren={childAssets} />
       <Card withBorder>
         <Stack gap="md">
-          <Group justify="space-between">
-            <Title order={5}>Child Assets ({childAssets.length})</Title>
+          <Group justify="space-between" align="flex-start">
+            <UnstyledButton
+              onClick={() => setIsExpanded((prev: boolean) => !prev)}
+              style={{
+                borderRadius: '6px',
+                padding: '6px 10px',
+                backgroundColor: 'var(--mantine-color-gray-1)',
+              }}
+            >
+              <Group gap="xs">
+                <ActionIcon variant="subtle" size="sm" color="gray">
+                  {isExpanded ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+                </ActionIcon>
+                <Title order={5}>Child Assets</Title>
+                <Badge variant="light" color="gray" size="sm">
+                  {childAssets.length}
+                </Badge>
+                <Text size="xs" c="dimmed">
+                  {isExpanded ? 'Hide list' : 'Show list'}
+                </Text>
+              </Group>
+            </UnstyledButton>
             <ActionsMenu
               onManageChildren={() => setManageChildrenOpened(true)}
               onUpdateStatus={() => setBulkUpdateOpened(true)}
               onPropagate={() => setPropagationOpened(true)}
             />
           </Group>
-          <StatusSummaryBadges statusSummary={statusSummary} totalCount={childAssets.length} />
-          <Stack gap="xs">
-            {childAssets.map((child) => (
-              <ChildAssetItem key={child.id} child={child} onNavigate={(id) => navigate(`/assets/${id}`)} />
-            ))}
-          </Stack>
+          <Collapse in={isExpanded}>
+            <Stack gap="md">
+              <StatusSummaryBadges statusSummary={statusSummary} totalCount={childAssets.length} />
+              <Stack gap="xs">
+                {childAssets.map((child) => (
+                  <ChildAssetItem key={child.id} child={child} onNavigate={(id) => navigate(`/assets/${id}`)} />
+                ))}
+              </Stack>
+            </Stack>
+          </Collapse>
         </Stack>
       </Card>
     </>

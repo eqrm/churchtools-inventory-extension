@@ -14,13 +14,36 @@ interface Module {
 // Cache for module ID to avoid repeated API calls
 let cachedModuleId: string | null = null;
 
+export function resolveModuleKey(): string {
+    const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+    const environment = import.meta.env.VITE_ENVIRONMENT ?? 'development';
+    const isTest = import.meta.env.VITEST === 'true';
+
+    if (isTest) {
+        return `test${baseKey}`;
+    }
+    if (environment === 'production') {
+        return `prod${baseKey}`;
+    }
+    return `dev${baseKey}`;
+}
+
 /**
  * Fetch the custom module ID from ChurchTools by its key and cache it
  */
-async function getModuleId(moduleKey: string): Promise<string> {
-    // Return cached value if available
-    if (cachedModuleId) {
-        return cachedModuleId;
+export async function getModuleId(moduleKey: string): Promise<string> {
+    // Check in-memory cache first
+    if (cachedModuleId) return cachedModuleId;
+
+    // Check localStorage cache (persist across page reloads)
+    try {
+        const stored = localStorage.getItem(`ct_module_${moduleKey}`);
+        if (stored) {
+            cachedModuleId = stored;
+            return cachedModuleId;
+        }
+    } catch {
+        // Ignore localStorage failures
     }
 
     try {
@@ -28,6 +51,14 @@ async function getModuleId(moduleKey: string): Promise<string> {
         // The churchtoolsClient returns the data directly (not wrapped in { data: ... })
         const module = await churchtoolsClient.get<Module>(`/custommodules/${moduleKey}`);
         cachedModuleId = String(module.id);
+
+        // Persist to localStorage for faster subsequent loads
+        try {
+            localStorage.setItem(`ct_module_${moduleKey}`, cachedModuleId);
+        } catch {
+            // ignore storage errors
+        }
+
         return cachedModuleId;
     } catch (apiError) {
         // If API call fails, try environment variable
@@ -37,11 +68,10 @@ async function getModuleId(moduleKey: string): Promise<string> {
             return cachedModuleId;
         }
         
-        console.error('Could not fetch module via API and no VITE_MODULE_ID set:', apiError);
+        console.error('Could not fetch module via API and no cached module id or env var available:', apiError);
         throw new Error(
             'Unable to initialize storage: Custom module not found. ' +
-            'Please create a custom module in ChurchTools admin panel with key "' + moduleKey + '" ' +
-            'or set VITE_MODULE_ID in your .env file.'
+            'Please create a custom module in ChurchTools admin panel with key "' + moduleKey + '".'
         );
     }
 }
@@ -60,19 +90,7 @@ export function useStorageProvider(): IStorageProvider | null {
         async function initializeProvider() {
             try {
                 const baseUrl = import.meta.env.VITE_BASE_URL;
-                const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
-                const environment = import.meta.env.VITE_ENVIRONMENT ?? 'development';
-                const isTest = import.meta.env.VITEST === 'true';
-                
-                // Construct module key with environment prefix (no hyphens due to ChurchTools limitation)
-                let moduleKey: string;
-                if (isTest) {
-                    moduleKey = `test${baseKey}`;
-                } else if (environment === 'production') {
-                    moduleKey = `prod${baseKey}`;
-                } else {
-                    moduleKey = `dev${baseKey}`;
-                }
+                const moduleKey = resolveModuleKey();
                 
                 if (!baseUrl) {
                     throw new Error('VITE_BASE_URL not configured. Please set it in your .env file.');

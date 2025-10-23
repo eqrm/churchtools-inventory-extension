@@ -31,6 +31,8 @@ import type {
 } from '../../types/entities';
 import { EdgeCaseError } from '../../types/edge-cases';
 import { generateNextAssetNumber } from '../../utils/assetNumbers';
+import { normalizeCategoryIconValue } from '../../utils/iconMigrationMap';
+import { BASE_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION } from '../migrations/constants';
 
 /**
  * ChurchTools Storage Provider
@@ -85,12 +87,17 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')
       .substring(0, 20) + '_' + Date.now().toString().substring(-4);
+
+    const rawIconInput = typeof data.icon === 'string' ? data.icon.trim() : undefined;
+    const normalizedIcon = rawIconInput
+      ? normalizeCategoryIconValue(rawIconInput) ?? rawIconInput
+      : undefined;
     
     const categoryData = {
       customModuleId: Number(this.moduleId),
       name: data.name,
       shorty,
-      description: data.icon || null,
+      description: normalizedIcon ?? null,
       // Store customFields in the data field as a JSON string
       data: data.customFields.length > 0 ? JSON.stringify(data.customFields) : null,
     };
@@ -115,6 +122,18 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     // Get the existing category to preserve immutable fields
     const existing = await this.getCategory(id);
+
+    const rawIconInput =
+      data.icon === undefined
+        ? undefined
+        : typeof data.icon === 'string'
+          ? data.icon.trim()
+          : undefined;
+    const normalizedIcon = rawIconInput
+      ? normalizeCategoryIconValue(rawIconInput) ?? rawIconInput
+      : undefined;
+    const descriptionValue =
+      data.icon === undefined ? existing.icon ?? null : normalizedIcon ?? null;
     
     // ChurchTools requires ALL fields in the update, including id, customModuleId, and shorty
     const updateData: Record<string, unknown> = {
@@ -122,7 +141,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       customModuleId: Number(this.moduleId),
       name: data.name ?? existing.name,
       shorty: existing.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 20),
-      description: data.icon ?? existing.icon ?? null,
+      description: descriptionValue,
     };
     
     // Store custom fields in the data field as a JSON string
@@ -278,6 +297,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       parentAssetId: data.parentAssetId,
       isParent: data.isParent,
       childAssetIds: data.childAssetIds || [],
+      schemaVersion: data.schemaVersion ?? CURRENT_SCHEMA_VERSION,
       createdBy: user.id,
       createdByName: `${user.firstName} ${user.lastName}`,
       createdAt: new Date().toISOString(),
@@ -357,6 +377,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       parentAssetId: data.parentAssetId ?? previous.parentAssetId,
       isParent: data.isParent ?? previous.isParent,
       bookable: data.bookable ?? previous.bookable,
+  schemaVersion: data.schemaVersion ?? previous.schemaVersion ?? CURRENT_SCHEMA_VERSION,
       createdBy: previous.createdBy,
       createdByName: previous.createdByName,
       createdAt: previous.createdAt,
@@ -732,10 +753,13 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       }
     }
     
+    const rawIcon = typeof cat['description'] === 'string' ? (cat['description'] as string).trim() : undefined;
+    const normalizedIcon = rawIcon ? normalizeCategoryIconValue(rawIcon) ?? rawIcon : undefined;
+
     return {
       id: String(cat['id']),
       name: cat['name'] as string,
-      icon: cat['description'] as string | undefined, // We stored icon in description
+      icon: normalizedIcon ?? rawIcon,
       customFields,
       createdBy: (cat['createdBy'] || 'system') as string,
       createdByName: (cat['createdByName'] || 'System') as string,
@@ -790,6 +814,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       lastModifiedBy: asset['lastModifiedBy'] as string,
       lastModifiedByName: asset['lastModifiedByName'] as string,
       lastModifiedAt: asset['lastModifiedAt'] as string,
+      schemaVersion: asset['schemaVersion'] as string | undefined,
     };
   }
 
@@ -983,6 +1008,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       parentAssetId: undefined,
       childAssetIds: childIds,
       customFieldValues: data.customFieldValues,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       createdBy: userId,
       createdByName: userName,
       createdAt: new Date().toISOString(),
@@ -1031,6 +1057,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
         parentAssetId: parentId,
         childAssetIds: [],
         customFieldValues: { ...data.customFieldValues },  // T096: Inherit from parent
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         createdBy: userId,
         createdByName: userName,
         createdAt: new Date().toISOString(),
@@ -1133,6 +1160,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       damageNotes: data.damageNotes,
       createdAt: data.createdAt || val['created_at'] as string || new Date().toISOString(),
       lastModifiedAt: data.lastModifiedAt || val['modified_at'] as string || new Date().toISOString(),
+      schemaVersion: data.schemaVersion as string | undefined,
     };
   }
 
@@ -1275,6 +1303,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       status: 'pending',
       requestedBy: data.requestedBy,
       requestedByName: requestedByName,
+      schemaVersion: data.schemaVersion ?? CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
       lastModifiedAt: new Date().toISOString(),
     };
@@ -1331,6 +1360,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       ...existing,
       ...data,
       lastModifiedAt: new Date().toISOString(),
+      schemaVersion: data.schemaVersion ?? existing.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     };
     
     // ChurchTools API requires: { id, dataCategoryId, value: string }
@@ -1570,7 +1600,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     const data = JSON.parse(dataStr) as Record<string, unknown>;
     
-    return {
+    const kit = {
       id: String(val['id']),
       name: data['name'] as string,
       description: data['description'] as string | undefined,
@@ -1583,7 +1613,10 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       lastModifiedBy: data['lastModifiedBy'] as string,
       lastModifiedByName: data['lastModifiedByName'] as string,
       lastModifiedAt: (data['lastModifiedAt'] || val['modified_at'] || new Date().toISOString()) as string,
-    };
+      schemaVersion: data['schemaVersion'] as string | undefined,
+    } as Kit
+
+    return kit
   }
 
   async getKits(): Promise<Kit[]> {
@@ -1642,6 +1675,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       lastModifiedBy: user.id,
       lastModifiedByName: user.name,
       lastModifiedAt: now,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
     };
     
     const valueData = {
@@ -1691,6 +1725,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       lastModifiedBy: user.id,
       lastModifiedByName: user.name,
       lastModifiedAt: now,
+      schemaVersion: existing.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     };
     
     const valueData = {
@@ -1844,6 +1879,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
         ...recordData,
         createdAt: new Date().toISOString(),
         lastModifiedAt: new Date().toISOString(),
+        schemaVersion: CURRENT_SCHEMA_VERSION,
       };
       
       // ChurchTools expects: { dataCategoryId: number, value: string }
@@ -1882,7 +1918,12 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     const category = await this.getMaintenanceRecordsCategory();
     const user = await this.apiClient.getCurrentUser();
-    const updated = { ...existing, ...updates, lastModifiedAt: new Date().toISOString() };
+      const updated = {
+        ...existing,
+        ...updates,
+        lastModifiedAt: new Date().toISOString(),
+        schemaVersion: existing.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+      };
     
     // ChurchTools API requires: { id, dataCategoryId, value: string }
     const dataValue = {
@@ -1918,7 +1959,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const dataStr = (v['value'] || v['data']) as string | null;
     const data = dataStr ? JSON.parse(dataStr) : v;
     
-    return {
+    const record = {
       id: String(v['id']),
       asset: data['asset'] as MaintenanceRecord['asset'],
       type: data['type'] as MaintenanceRecord['type'],
@@ -1933,7 +1974,10 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       nextDueDate: data['nextDueDate'] as string | undefined,
       createdAt: data['createdAt'] as string || new Date().toISOString(),
       lastModifiedAt: data['lastModifiedAt'] as string || new Date().toISOString(),
-    };
+      schemaVersion: data['schemaVersion'] as string | undefined,
+    } as MaintenanceRecord
+
+    return record
   }
 
   /**
@@ -2051,10 +2095,18 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     const category = await this.getMaintenanceSchedulesCategory();
     const user = await this.apiClient.getCurrentUser();
     
+    const timestamp = new Date().toISOString();
+    const schedulePayload = {
+      ...scheduleData,
+      createdAt: timestamp,
+      lastModifiedAt: timestamp,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    };
+
     // ChurchTools expects: { dataCategoryId: number, value: string }
     const dataValue = {
       dataCategoryId: Number(category.id),
-      value: JSON.stringify(scheduleData),
+      value: JSON.stringify(schedulePayload),
     };
     
     const created = await this.apiClient.createDataValue(
@@ -2086,13 +2138,18 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     }
     
     const user = await this.apiClient.getCurrentUser();
-    const updated = { ...existing, ...updates };
+    const merged = {
+      ...existing,
+      ...updates,
+      lastModifiedAt: new Date().toISOString(),
+      schemaVersion: existing.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+    };
     
     // ChurchTools API requires: { id, dataCategoryId, value: string }
     const dataValue = {
       id: Number(id),
       dataCategoryId: Number(category.id),
-      value: JSON.stringify(updated),
+      value: JSON.stringify(merged),
     };
     
     await this.apiClient.updateDataValue(
@@ -2102,7 +2159,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       dataValue
     );
     
-    const schedule = this.mapToMaintenanceSchedule(updated);
+  const schedule = this.mapToMaintenanceSchedule(merged);
     
     await this.recordChange({
       entityType: 'maintenance',
@@ -2179,24 +2236,29 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
   }
 
   private mapToMaintenanceSchedule(val: unknown): MaintenanceSchedule {
-    const v = val as Record<string, unknown>;
-    return {
-      id: v['id'] as string,
-      assetId: v['assetId'] as string,
-      scheduleType: v['scheduleType'] as MaintenanceSchedule['scheduleType'],
-      intervalDays: v['intervalDays'] as number | undefined,
-      intervalMonths: v['intervalMonths'] as number | undefined,
-      intervalYears: v['intervalYears'] as number | undefined,
-      intervalHours: v['intervalHours'] as number | undefined,
-      intervalBookings: v['intervalBookings'] as number | undefined,
-      fixedDate: v['fixedDate'] as string | undefined,
-      reminderDaysBefore: v['reminderDaysBefore'] as number,
-      lastPerformed: v['lastPerformed'] as string | undefined,
-      nextDue: v['nextDue'] as string | undefined,
-      isOverdue: v['isOverdue'] as boolean | undefined,
-      createdAt: v['created_at'] as string || new Date().toISOString(),
-      lastModifiedAt: v['modified_at'] as string || new Date().toISOString(),
-    };
+    const raw = val as Record<string, unknown>
+    const parsed = typeof raw['value'] === 'string' ? JSON.parse(raw['value'] as string) as Record<string, unknown> : raw
+
+    const schedule = {
+      id: String(raw['id'] ?? parsed['id']),
+      assetId: parsed['assetId'] as string,
+      scheduleType: parsed['scheduleType'] as MaintenanceSchedule['scheduleType'],
+      intervalDays: parsed['intervalDays'] as number | undefined,
+      intervalMonths: parsed['intervalMonths'] as number | undefined,
+      intervalYears: parsed['intervalYears'] as number | undefined,
+      intervalHours: parsed['intervalHours'] as number | undefined,
+      intervalBookings: parsed['intervalBookings'] as number | undefined,
+      fixedDate: parsed['fixedDate'] as string | undefined,
+      reminderDaysBefore: parsed['reminderDaysBefore'] as number,
+      lastPerformed: parsed['lastPerformed'] as string | undefined,
+      nextDue: parsed['nextDue'] as string | undefined,
+      isOverdue: parsed['isOverdue'] as boolean | undefined,
+      createdAt: (parsed['createdAt'] as string) ?? (raw['created_at'] as string) ?? new Date().toISOString(),
+      lastModifiedAt: (parsed['lastModifiedAt'] as string) ?? (raw['modified_at'] as string) ?? new Date().toISOString(),
+      schemaVersion: parsed['schemaVersion'] as string | undefined,
+    } as MaintenanceSchedule
+
+    return schedule
   }
 
   // ============================================================================
@@ -2243,7 +2305,11 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     let sessions: StockTakeSession[] = values.map((val: unknown) => {
       const record = val as { id: string; value: string };
       const data = JSON.parse(record.value) as StockTakeSession;
-      return { ...data, id: record.id };
+      return {
+        ...data,
+        id: record.id,
+        schemaVersion: data.schemaVersion ?? BASE_SCHEMA_VERSION,
+      };
     });
     
     // Apply status filter if provided
@@ -2332,9 +2398,9 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       unexpectedAssets: [],
       conductedBy: data.conductedBy,
       conductedByName: data.conductedByName,
-      notes: data.notes,
       createdAt: new Date().toISOString(),
       lastModifiedAt: new Date().toISOString(),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
     };
     
     // Save to ChurchTools
@@ -2420,6 +2486,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       ...session,
       scannedAssets: [...session.scannedAssets, scanRecord],
       lastModifiedAt: new Date().toISOString(),
+      schemaVersion: session.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     };
     
     // Save to ChurchTools
@@ -2486,6 +2553,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       unexpectedAssets,
       completedDate: new Date().toISOString(),
       lastModifiedAt: new Date().toISOString(),
+      schemaVersion: session.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     };
     
     // Save to ChurchTools
@@ -2525,6 +2593,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       status: 'cancelled' as StockTakeStatus,
       completedDate: new Date().toISOString(),
       lastModifiedAt: new Date().toISOString(),
+      schemaVersion: session.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     };
     
     // Save to ChurchTools

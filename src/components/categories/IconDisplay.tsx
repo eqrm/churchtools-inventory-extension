@@ -1,41 +1,6 @@
-import {
-  IconMicrophone,
-  IconDeviceTv,
-  IconBulb,
-  IconCamera,
-  IconMusic,
-  IconHeadphones,
-  IconDeviceSpeaker,
-  IconPlugConnected,
-  IconWifi,
-  IconRouter,
-  IconDeviceLaptop,
-  IconDeviceDesktop,
-  IconKeyboard,
-  IconMouse,
-  IconPrinter,
-  IconPresentation,
-  IconQuestionMark,
-} from '@tabler/icons-react';
-
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number | string }>> = {
-  'Microphone': IconMicrophone,
-  'TV/Display': IconDeviceTv,
-  'Lighting': IconBulb,
-  'Camera': IconCamera,
-  'Music': IconMusic,
-  'Headphones': IconHeadphones,
-  'Speaker': IconDeviceSpeaker,
-  'Connector': IconPlugConnected,
-  'Cable': IconWifi,
-  'Network': IconRouter,
-  'Laptop': IconDeviceLaptop,
-  'Desktop': IconDeviceDesktop,
-  'Keyboard': IconKeyboard,
-  'Mouse': IconMouse,
-  'Printer': IconPrinter,
-  'Projector': IconPresentation,
-};
+import { Icon } from '@mdi/react';
+import { mdiHelpCircleOutline } from '@mdi/js';
+import { resolveCategoryIconPath } from '../../utils/iconMigrationMap';
 
 interface IconDisplayProps {
   iconName?: string;
@@ -43,10 +8,7 @@ interface IconDisplayProps {
 }
 
 export function IconDisplay({ iconName, size = 20 }: IconDisplayProps) {
-  if (!iconName) {
-    return <IconQuestionMark size={size} />;
-  }
-
-  const IconComponent = ICON_MAP[iconName] || IconQuestionMark;
-  return <IconComponent size={size} />;
+  const mdiPath = resolveCategoryIconPath(iconName);
+  const resolvedSize = typeof size === 'number' ? `${size}px` : size;
+  return <Icon path={mdiPath ?? mdiHelpCircleOutline} size={resolvedSize} />;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Stack, Text, Title, Select } from '@mantine/core';
+import { Modal, Stack, Text, Select } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from './BarcodeScanner';
 import { ScannerInput } from './ScannerInput';
@@ -119,7 +119,7 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
     <Modal
       opened={opened}
       onClose={onClose}
-      title={<Title order={3}>Quick Scan</Title>}
+      title="Quick Scan"
       size="lg"
       centered
     >
@@ -150,6 +150,8 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
           onError={handleError}
           enableCamera={true}
           enableKeyboard={true}
+          scannerModels={scannerModels}
+          selectedScannerId={preferredScannerId}
         />
 
         {/* Manual Entry Fallback */}

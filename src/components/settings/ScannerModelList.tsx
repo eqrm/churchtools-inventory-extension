@@ -89,6 +89,8 @@ function ScannerModelTable({ models, onAdd, onEdit, onDelete }: ScannerModelTabl
         highlightOnHover
         records={models}
         columns={columns}
+        onRowClick={({ record }) => onEdit(record)}
+        rowStyle={() => ({ cursor: 'pointer' })}
       />
     </Stack>
   )
@@ -198,7 +200,10 @@ function createActionsColumn(
         <ActionIcon
           variant="subtle"
           color="blue"
-          onClick={() => onEdit(model)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onEdit(model)
+          }}
           aria-label="Edit scanner model"
         >
           <IconEdit size={16} />
@@ -206,7 +211,10 @@ function createActionsColumn(
         <ActionIcon
           variant="subtle"
           color="red"
-          onClick={() => onDelete(model)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete(model)
+          }}
           aria-label="Delete scanner model"
         >
           <IconTrash size={16} />
