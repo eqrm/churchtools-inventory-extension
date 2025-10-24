@@ -77,6 +77,12 @@ import {
   mdiPackageVariant,
   mdiClose as mdiX,
 } from '@mdi/js';
+import {
+  cacheIconOption,
+  deriveLabelFromValue,
+  getCachedIconOption,
+  isLikelyMdiValue,
+} from './mdiDynamicRegistry';
 
 export interface CategoryIconOption {
   value: string;
@@ -188,6 +194,7 @@ export const TABLER_TO_MDI_MAP: Record<string, string> = {
  * so they are recognized by normalize/resolve helpers.
  */
 export function registerDynamicIcon(option: CategoryIconOption): boolean {
+  cacheIconOption(option);
   // avoid duplicates by value
   if (!CATEGORY_ICON_OPTIONS.some((o) => o.value === option.value)) {
     // mutate the existing array so constant binding stays valid
@@ -202,8 +209,8 @@ export function normalizeCategoryIconValue(iconValue?: string): string | undefin
     return undefined;
   }
 
-  if (iconValue.startsWith('mdi:')) {
-    return CATEGORY_ICON_OPTIONS.some((option) => option.value === iconValue) ? iconValue : undefined;
+  if (isLikelyMdiValue(iconValue)) {
+    return iconValue;
   }
 
   const pathMatch = CATEGORY_ICON_OPTIONS.find((option) => option.path === iconValue);
@@ -225,8 +232,10 @@ export function resolveCategoryIconPath(iconValue?: string): string | undefined 
   if (!normalizedValue) {
     return undefined;
   }
-
-  return CATEGORY_ICON_OPTIONS.find((option) => option.value === normalizedValue)?.path;
+  const option =
+    CATEGORY_ICON_OPTIONS.find((candidate) => candidate.value === normalizedValue) ??
+    getCachedIconOption(normalizedValue);
+  return option?.path;
 }
 
 export function resolveCategoryIconLabel(iconValue?: string): string | undefined {
@@ -234,8 +243,16 @@ export function resolveCategoryIconLabel(iconValue?: string): string | undefined
   if (!normalizedValue) {
     return undefined;
   }
-
-  return CATEGORY_ICON_OPTIONS.find((option) => option.value === normalizedValue)?.label;
+  const option =
+    CATEGORY_ICON_OPTIONS.find((candidate) => candidate.value === normalizedValue) ??
+    getCachedIconOption(normalizedValue);
+  if (option) {
+    return option.label;
+  }
+  if (normalizedValue.startsWith('mdi:')) {
+    return deriveLabelFromValue(normalizedValue);
+  }
+  return undefined;
 }
 
 /**

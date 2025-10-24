@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, forwardRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, forwardRef } from 'react';
 import {
   ActionIcon,
   Popover,
@@ -22,6 +22,7 @@ import {
 } from '../../utils/iconMigrationMap';
 import { IconDisplay } from './IconDisplay';
 import { registerDynamicIcon } from '../../utils/iconMigrationMap';
+import { getCachedIconOption, searchIconOptions } from '../../utils/mdiDynamicRegistry';
 
 interface IconPickerProps {
   value?: string;
@@ -146,53 +147,86 @@ export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
     if (!normalizedValue) {
       return null;
     }
-    return CATEGORY_ICON_OPTIONS.find((icon) => icon.value === normalizedValue) ?? null;
+    return (
+      CATEGORY_ICON_OPTIONS.find((icon) => icon.value === normalizedValue) ??
+      getCachedIconOption(normalizedValue) ??
+      null
+    );
   }, [normalizedValue]);
 
-  // Allow resolving arbitrary mdi icon names entered in the search box.
-  // If user types an mdi name like 'account' or 'microphone', try to dynamically import
-  // the symbol from '@mdi/js' (e.g. mdiAccount) and register it so it appears in the grid.
-  const [dynamicRegisterCount, setDynamicRegisterCount] = useState(0);
+  const [dynamicResults, setDynamicResults] = useState<CategoryIconOption[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const filteredIcons = useMemo(() => {
-    // include dynamicRegisterCount in the body so eslint knows the dependency is intentional
-    void dynamicRegisterCount;
     const term = search.trim().toLowerCase();
     if (!term) {
       return CATEGORY_ICON_OPTIONS;
     }
-    return CATEGORY_ICON_OPTIONS.filter((icon) => {
+
+    const matches = CATEGORY_ICON_OPTIONS.filter((icon) => {
       const haystack = [icon.label, ...icon.keywords].join(' ').toLowerCase();
       return haystack.includes(term);
     });
-  }, [search, dynamicRegisterCount]);
+
+    if (dynamicResults.length === 0) {
+      return matches;
+    }
+
+    const seen = new Set<string>();
+    const combined: CategoryIconOption[] = [];
+
+    for (const option of dynamicResults) {
+      if (!seen.has(option.value)) {
+        seen.add(option.value);
+        combined.push(option);
+      }
+    }
+
+    for (const option of matches) {
+      if (!seen.has(option.value)) {
+        seen.add(option.value);
+        combined.push(option);
+      }
+    }
+
+    return combined;
+  }, [search, dynamicResults]);
 
   useEffect(() => {
-    const tryResolve = async () => {
-      const term = search.trim();
-      if (!term) return;
-      // Accept plain names or prefixed 'mdi:account'
-      const candidate = term.startsWith('mdi:') ? term.slice(4) : term;
-      // build symbol name: mdiAccount -> camelcase with first letter uppercase
-      const symbol = 'mdi' + candidate.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());
+    const term = search.trim();
+    if (!term) {
+      setDynamicResults([]);
+      setSearching(false);
+      return;
+    }
 
-      try {
-        // dynamic import of @mdi/js module
-        const mdiModule = await import('@mdi/js');
-        const path = (mdiModule as unknown as Record<string, string>)[symbol];
-        if (path && typeof path === 'string') {
-          const value = `mdi:${candidate}`;
-          // register option so normalizeCategoryIconValue can find it
-          const added = registerDynamicIcon({ value, label: candidate, path, keywords: [candidate] });
-          if (added) setDynamicRegisterCount((c) => c + 1);
-        }
-      } catch {
-        // ignore resolution errors (module might not contain symbol)
-      }
+    let cancelled = false;
+    setSearching(true);
+
+    const timer = setTimeout(() => {
+      void searchIconOptions(term, 60)
+        .then((options) => {
+          if (cancelled) {
+            return;
+          }
+          setDynamicResults(options);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setDynamicResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setSearching(false);
+          }
+        });
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
-
-    const timer = setTimeout(() => void tryResolve(), 300);
-    return () => clearTimeout(timer);
   }, [search]);
 
   const selectedLabel = useMemo(() => {
@@ -201,6 +235,20 @@ export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
     }
     return resolveCategoryIconLabel(value ?? undefined);
   }, [selectedIcon, value]);
+
+  const handleSelect = useCallback(
+    (newValue: string) => {
+      if (!newValue) {
+        return;
+      }
+      const option = getCachedIconOption(newValue);
+      if (option) {
+        registerDynamicIcon(option);
+      }
+      onChange(newValue);
+    },
+    [onChange],
+  );
 
   return (
     <Popover opened={opened} onChange={setOpened} width={320} position="bottom-start">
@@ -233,16 +281,17 @@ export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
             <IconGrid
               filteredIcons={filteredIcons}
               value={normalizedValue}
-              onChange={(newValue) => {
-                if (newValue) {
-                  onChange(newValue);
-                }
-              }}
+              onChange={handleSelect}
               onClose={() => {
                 setOpened(false);
               }}
             />
-            {filteredIcons.length === 0 && (
+            {searching && (
+              <Text size="xs" c="dimmed" ta="center" py="sm">
+                Searching the MDI library...
+              </Text>
+            )}
+            {!searching && filteredIcons.length === 0 && (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 No icons found
               </Text>

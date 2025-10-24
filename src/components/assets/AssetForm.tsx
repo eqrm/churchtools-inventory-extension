@@ -29,6 +29,7 @@ import { MasterDataSelectInput } from '../common/MasterDataSelectInput';
 // Photo features removed due to storage size constraints
 import type { Asset, AssetCreate, AssetStatus, CustomFieldValue } from '../../types/entities';
  import { validateCustomFieldValue } from '../../utils/validators';
+import { ASSET_STATUS_OPTIONS } from '../../constants/assetStatuses';
 
 interface AssetFormProps {
   asset?: Asset;
@@ -52,15 +53,6 @@ interface AssetFormValues {
   customFieldValues: Record<string, CustomFieldValue>;
 }
 
-const STATUS_OPTIONS: { value: AssetStatus; label: string }[] = [
-  { value: 'available', label: 'Available' },
-  { value: 'in-use', label: 'In Use' },
-  { value: 'broken', label: 'Broken' },
-  { value: 'in-repair', label: 'In Repair' },
-  { value: 'installed', label: 'Installed' },
-  { value: 'sold', label: 'Sold' },
-  { value: 'destroyed', label: 'Destroyed' },
-];
 
 export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
   const isEditing = Boolean(asset);
@@ -404,7 +396,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                 label="Status"
                 placeholder="Select status"
                 required
-                data={STATUS_OPTIONS}
+                data={[...ASSET_STATUS_OPTIONS]}
                 {...form.getInputProps('status')}
               />
             </Grid.Col>

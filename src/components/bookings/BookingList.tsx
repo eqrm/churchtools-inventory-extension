@@ -19,7 +19,9 @@ import { PersonDisplay } from '../common/PersonDisplay'
 import type { Booking, BookingStatus, BookingFilters } from '../../types/entities'
 import { bookingStrings } from '../../i18n/bookingStrings'
 
-const PAGE_SIZE = 20
+const BOOKING_PAGE_SIZE_OPTIONS: number[] = [10, 20, 50, 100]
+const BOOKING_PAGE_SIZE_STORAGE_KEY = 'booking-list-page-size'
+const DEFAULT_BOOKING_PAGE_SIZE = 20
 
 interface BookingListProps {
   onBookingClick?: (bookingId: string) => void
@@ -226,12 +228,34 @@ function BookingFilters({ searchQuery, onSearchChange, filters, onFiltersChange,
 
 export function BookingList({ onBookingClick, onCreateClick, initialFilters = {} }: BookingListProps) {
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_BOOKING_PAGE_SIZE
+    }
+    const stored = window.localStorage.getItem(BOOKING_PAGE_SIZE_STORAGE_KEY)
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN
+    return BOOKING_PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : DEFAULT_BOOKING_PAGE_SIZE
+  })
   const [filters, setFilters] = useState<BookingFilters>(initialFilters)
   const [searchQuery, setSearchQuery] = useState('')
   const { bookings, isLoading, error } = useFilteredBookings(filters, searchQuery)
   
   // Get all bookings without search filter for building person options
   const { data: allBookings } = useBookings(filters)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    window.localStorage.setItem(BOOKING_PAGE_SIZE_STORAGE_KEY, String(pageSize))
+  }, [pageSize])
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil((bookings?.length ?? 0) / pageSize))
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, bookings?.length, pageSize])
 
   if (isLoading) {
     return (
@@ -244,7 +268,7 @@ export function BookingList({ onBookingClick, onCreateClick, initialFilters = {}
           onCreateClick={onCreateClick}
           allBookings={allBookings}
         />
-        <ListLoadingSkeleton rows={PAGE_SIZE} height={60} />
+  <ListLoadingSkeleton rows={pageSize} height={60} />
       </Stack>
     )
   }
@@ -278,7 +302,7 @@ export function BookingList({ onBookingClick, onCreateClick, initialFilters = {}
     )
   }
 
-  const paginatedBookings = bookings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const paginatedBookings = bookings.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <Stack gap="md">
@@ -294,9 +318,14 @@ export function BookingList({ onBookingClick, onCreateClick, initialFilters = {}
         records={paginatedBookings} 
         columns={getTableColumns()} 
         totalRecords={bookings.length} 
-        recordsPerPage={PAGE_SIZE} 
+        recordsPerPage={pageSize} 
+        recordsPerPageOptions={BOOKING_PAGE_SIZE_OPTIONS}
         page={page} 
         onPageChange={setPage} 
+        onRecordsPerPageChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onRowClick={onBookingClick ? ({ record }) => onBookingClick(record.id) : undefined} 
         highlightOnHover={!!onBookingClick}
         rowStyle={() => onBookingClick ? { cursor: 'pointer' } : undefined}

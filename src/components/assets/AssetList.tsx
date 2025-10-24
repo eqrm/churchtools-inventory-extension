@@ -37,23 +37,17 @@ import { CustomFieldFilterInput } from './CustomFieldFilterInput';
 import { IconDisplay } from '../categories/IconDisplay';
 import { MaintenanceReminderBadge } from '../maintenance/MaintenanceReminderBadge';
 import type { Asset, AssetStatus, AssetFilters } from '../../types/entities';
+import { ASSET_STATUS_OPTIONS } from '../../constants/assetStatuses';
 
 interface AssetListProps {
   onView?: (asset: Asset) => void;
   onEdit?: (asset: Asset) => void;
   onCreateNew?: () => void;
   initialFilters?: AssetFilters;
+  filtersOpen?: boolean;
+  onToggleFilters?: () => void;
+  hideFilterButton?: boolean;
 }
-
-const STATUS_OPTIONS: { value: AssetStatus; label: string }[] = [
-  { value: 'available', label: 'Available' },
-  { value: 'in-use', label: 'In Use' },
-  { value: 'broken', label: 'Broken' },
-  { value: 'in-repair', label: 'In Repair' },
-  { value: 'installed', label: 'Installed' },
-  { value: 'sold', label: 'Sold' },
-  { value: 'destroyed', label: 'Destroyed' },
-];
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'all', label: 'All Assets' },
@@ -62,6 +56,10 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'standalone', label: 'Standalone Assets Only' },
 ];
 
+const ASSET_PAGE_SIZE_OPTIONS: number[] = [25, 50, 100, 200];
+const ASSET_PAGE_SIZE_STORAGE_KEY = 'asset-list-page-size';
+const DEFAULT_ASSET_PAGE_SIZE = 50;
+
 interface AssetListRow extends Asset {
   __depth: number;
   __parentId?: string;
@@ -69,10 +67,18 @@ interface AssetListRow extends Asset {
   __isExpanded?: boolean;
 }
 
-export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: AssetListProps) {
+export function AssetList({
+  onView,
+  onEdit,
+  onCreateNew,
+  initialFilters,
+  filtersOpen,
+  onToggleFilters,
+  hideFilterButton,
+}: AssetListProps) {
   const navigate = useNavigate(); // T263 - E4: Router navigation for direct clicks
   const [filters, setFilters] = useState<AssetFilters>(initialFilters || {});
-  const [showFilters, setShowFilters] = useState(false);
+  const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>('all');
   const [prefixFilter, setPrefixFilter] = useState<string>('all'); // T275: Prefix-based filtering
   const [sortStatus, setSortStatus] = useState<DataTableSortStatus<AssetListRow>>({
@@ -82,8 +88,49 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
   
   // T214: Pagination for large asset lists (performance optimization)
-  const PAGE_SIZE = 50; // Show 50 rows per page for optimal performance
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_ASSET_PAGE_SIZE;
+    }
+    const stored = window.localStorage.getItem(ASSET_PAGE_SIZE_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    return ASSET_PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : DEFAULT_ASSET_PAGE_SIZE;
+  });
   const [page, setPage] = useState(1);
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(ASSET_PAGE_SIZE_STORAGE_KEY, String(pageSize));
+  }, [pageSize]);
+
+  const filtersPanelOpen = filtersOpen ?? internalFiltersOpen;
+  const toggleFilters = () => {
+    if (onToggleFilters) {
+      onToggleFilters();
+      return;
+    }
+    setInternalFiltersOpen((prev) => !prev);
+  };
+
+  const initialFiltersSnapshot = useMemo(
+    () => JSON.stringify(initialFilters ?? {}),
+    [initialFilters],
+  );
+
+  useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+      setFilters({
+        ...initialFilters,
+        customFields: initialFilters.customFields
+          ? { ...initialFilters.customFields }
+          : undefined,
+      });
+    } else {
+      setFilters({});
+    }
+  }, [initialFiltersSnapshot, initialFilters]);
+
 
   const { data: categories = [] } = useCategories();
   const { data: prefixes = [] } = useAssetPrefixes(); // T275: Load prefixes for filtering
@@ -211,17 +258,17 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
   }, [sortedAssets, assetIdSet]);
 
   useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(topLevelAssets.length / PAGE_SIZE));
+    const maxPage = Math.max(1, Math.ceil(topLevelAssets.length / pageSize));
     if (page > maxPage) {
       setPage(maxPage);
     }
-  }, [page, topLevelAssets.length, PAGE_SIZE]);
+  }, [page, topLevelAssets.length, pageSize]);
 
   const paginatedTopLevelAssets = useMemo(() => {
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize;
     return topLevelAssets.slice(from, to);
-  }, [topLevelAssets, page, PAGE_SIZE]);
+  }, [topLevelAssets, page, pageSize]);
 
   const displayRecords = useMemo<AssetListRow[]>(() => {
     const rows: AssetListRow[] = [];
@@ -357,26 +404,28 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
       <Group justify="space-between">
         <Title order={2}>Assets</Title>
         <Group>
-          <Button
-            variant={showFilters ? 'filled' : 'default'}
-            leftSection={<IconFilter size={16} />}
-            onClick={() => {
-              setShowFilters(!showFilters);
-            }}
-          >
-            Filters
-            {hasActiveFilters && (
-              <Badge size="xs" circle ml="xs">
-                {[
-                  filters.categoryId, 
-                  filters.status, 
-                  filters.location, 
-                  filters.search,
-                  ...(filters.customFields ? Object.keys(filters.customFields) : [])
-                ].filter(Boolean).length}
-              </Badge>
-            )}
-          </Button>
+          {hideFilterButton !== true && (
+            <Button
+              variant={filtersPanelOpen ? 'filled' : 'default'}
+              leftSection={<IconFilter size={16} />}
+              onClick={toggleFilters}
+            >
+              Filters
+              {hasActiveFilters && (
+                <Badge size="xs" circle ml="xs">
+                  {[
+                    filters.categoryId,
+                    filters.status,
+                    filters.location,
+                    filters.search,
+                    ...(filters.customFields ? Object.keys(filters.customFields) : []),
+                  ]
+                    .filter(Boolean)
+                    .length}
+                </Badge>
+              )}
+            </Button>
+          )}
           {onCreateNew && (
             <Button
               leftSection={<IconPlus size={16} />}
@@ -388,7 +437,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
         </Group>
       </Group>
 
-      {showFilters && (
+      {filtersPanelOpen && (
         <Card withBorder>
           <Stack gap="md">
             <Group align="flex-end">
@@ -461,7 +510,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                 onChange={(val) => {
                   setFilters({ ...filters, status: val ? (val as AssetStatus) : undefined });
                 }}
-                data={STATUS_OPTIONS}
+                data={ASSET_STATUS_OPTIONS}
                 clearable
               />
 
@@ -524,9 +573,14 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
           onRowClick={handleRowClick}
           rowStyle={() => ({ cursor: 'pointer' })}
           totalRecords={topLevelAssets.length}
-          recordsPerPage={PAGE_SIZE}
+          recordsPerPage={pageSize}
+          recordsPerPageOptions={ASSET_PAGE_SIZE_OPTIONS}
           page={page}
           onPageChange={setPage}
+          onRecordsPerPageChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
           paginationText={({ from, to, totalRecords }) =>
             `Showing ${from} to ${to} of ${totalRecords} assets`
           }

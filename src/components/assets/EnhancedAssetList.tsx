@@ -64,15 +64,15 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
   } = useUIStore();
 
   // T210: Filter builder state with localStorage persistence
-  const [showFilterBuilder, setShowFilterBuilder] = useState(() => {
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState<boolean>(() => {
     const saved = localStorage.getItem('churchtools-inventory-filter-panel-expanded');
-    return saved ? JSON.parse(saved) : false;
+    return saved ? JSON.parse(saved) === true : false;
   });
 
   // Persist filter panel state to localStorage
   useEffect(() => {
-    localStorage.setItem('churchtools-inventory-filter-panel-expanded', JSON.stringify(showFilterBuilder));
-  }, [showFilterBuilder]);
+    localStorage.setItem('churchtools-inventory-filter-panel-expanded', JSON.stringify(filtersPanelOpen));
+  }, [filtersPanelOpen]);
 
   // T211: Save view modal
   const [showSaveView, setShowSaveView] = useState(false);
@@ -190,6 +190,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
       case 'gallery':
@@ -206,6 +208,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
       default:
@@ -215,6 +219,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
     }
@@ -247,9 +253,9 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
 
           {/* T210: Filter builder toggle */}
           <Button
-            variant={showFilterBuilder ? 'filled' : 'default'}
+            variant={filtersPanelOpen ? 'filled' : 'default'}
             leftSection={<IconFilter size={16} />}
-            onClick={() => setShowFilterBuilder(!showFilterBuilder)}
+            onClick={() => setFiltersPanelOpen((prev) => !prev)}
           >
             Filter {viewFilters.length > 0 && `(${viewFilters.length})`}
           </Button>
@@ -273,7 +279,7 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
       </Group>
 
       {/* T210: Filter builder panel with smooth collapse animation */}
-      <Collapse in={showFilterBuilder}>
+      <Collapse in={filtersPanelOpen}>
         <Card withBorder>
           <FilterBuilder filters={viewFilters} onChange={setViewFilters} />
         </Card>

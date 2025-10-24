@@ -2383,6 +2383,7 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     
     // Create session object matching the actual type definition
     const sessionData: Omit<StockTakeSession, 'id'> = {
+      nameReason: data.nameReason,
       startDate: data.startDate,
       completedDate: data.completedDate,
       status: data.status,
