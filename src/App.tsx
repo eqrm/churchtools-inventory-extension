@@ -1,8 +1,9 @@
-import { useState, useEffect, lazy, Suspense, Component, type ReactNode } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Center, Loader, Stack, Text } from '@mantine/core';
 import { Navigation } from './components/layout/Navigation';
 import { QuickScanModal } from './components/scanner/QuickScanModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Lazy load page components for code splitting (T215)
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -34,52 +35,9 @@ function PageLoader() {
 }
 
 /**
- * Error boundary for catching and displaying runtime errors (T221)
- */
-class ErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error boundary caught error:', error, errorInfo);
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <Center h="100vh">
-          <Stack align="center" gap="md" p="xl" style={{ maxWidth: 500 }}>
-            <Text size="xl" fw={600} c="red">
-              Something went wrong
-            </Text>
-            <Text c="dimmed" ta="center">
-              {this.state.error?.message || 'An unexpected error occurred'}
-            </Text>
-            <Text size="sm" c="dimmed" ta="center">
-              Please refresh the page to try again. If the problem persists, contact support.
-            </Text>
-          </Stack>
-        </Center>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-/**
  * Main application component with routing and global scanner
  */
-/* eslint-disable max-lines-per-function */
+ 
 function App() {
   const [scanModalOpened, setScanModalOpened] = useState(false);
 
@@ -105,6 +63,7 @@ function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter
+        basename={import.meta.env.BASE_URL}
         future={{
           v7_startTransition: true,
           v7_relativeSplatPath: true,
@@ -128,6 +87,7 @@ function App() {
               <Route path="/kits/:id" element={<KitDetailPage />} />
               <Route path="/stock-take" element={<StockTakePage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/reports/:reportId" element={<ReportsPage />} />
               <Route path="/maintenance" element={<MaintenancePage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

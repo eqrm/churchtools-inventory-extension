@@ -27,7 +27,7 @@ interface AssetPrefixFormValues {
  * - Count of existing assets
  * - Warning about consistency impact
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function AssetPrefixSettings() {
   const { data: assets = [] } = useAssets({});
   const [isSaving, setIsSaving] = useState(false);
@@ -66,6 +66,7 @@ export function AssetPrefixSettings() {
     let maxNumber = 0;
 
     for (const asset of assets) {
+      if (!asset.assetNumber) continue;
       const match = asset.assetNumber.match(prefixPattern);
       if (match && match[1]) {
         const num = parseInt(match[1], 10);
@@ -80,7 +81,7 @@ export function AssetPrefixSettings() {
 
   // Count assets with current prefix
   const assetsWithCurrentPrefix = assets.filter((asset) =>
-    asset.assetNumber.toUpperCase().startsWith(currentPrefix.toUpperCase() + '-')
+    asset.assetNumber && asset.assetNumber.toUpperCase().startsWith(currentPrefix.toUpperCase() + '-')
   ).length;
 
   const handleSubmit = (values: AssetPrefixFormValues) => {

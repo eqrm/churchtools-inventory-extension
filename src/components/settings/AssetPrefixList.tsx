@@ -218,6 +218,11 @@ export function AssetPrefixList() {
             minHeight={200}
             noRecordsText="No prefixes configured"
             highlightOnHover
+            onRowClick={({ record }) => {
+              setSelectedPrefix(record);
+              setEditModalOpened(true);
+            }}
+            rowStyle={() => ({ cursor: 'pointer' })}
           />
         </Paper>
 

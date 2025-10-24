@@ -14,6 +14,7 @@ import {
   Stack,
   Title,
   Drawer,
+  Collapse,
 } from '@mantine/core';
 import {
   IconFilter,
@@ -62,14 +63,38 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
     setGroupBy,
   } = useUIStore();
 
-  // T210: Filter builder state
-  const [showFilterBuilder, setShowFilterBuilder] = useState(false);
+  // T210: Filter builder state with localStorage persistence
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('churchtools-inventory-filter-panel-expanded');
+    return saved ? JSON.parse(saved) === true : false;
+  });
+
+  // Persist filter panel state to localStorage
+  useEffect(() => {
+    localStorage.setItem('churchtools-inventory-filter-panel-expanded', JSON.stringify(filtersPanelOpen));
+  }, [filtersPanelOpen]);
 
   // T211: Save view modal
   const [showSaveView, setShowSaveView] = useState(false);
 
-  // T212: Saved views menu
-  const [showSavedViews, setShowSavedViews] = useState(false);
+  // T212: Saved views menu with localStorage persistence
+  const [showSavedViews, setShowSavedViews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('enhanced-asset-list-saved-views-open');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist saved views drawer state
+  useEffect(() => {
+    try {
+      localStorage.setItem('enhanced-asset-list-saved-views-open', JSON.stringify(showSavedViews));
+    } catch (error) {
+      console.warn('Failed to save saved views drawer state:', error);
+    }
+  }, [showSavedViews]);
 
   const { data: assets = [] } = useAssets();
 
@@ -165,6 +190,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
       case 'gallery':
@@ -181,6 +208,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
       default:
@@ -190,6 +219,8 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
             onEdit={onEdit}
             onCreateNew={undefined}
             initialFilters={legacyFilters}
+            hideFilterButton
+            filtersOpen={filtersPanelOpen}
           />
         );
     }
@@ -222,9 +253,9 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
 
           {/* T210: Filter builder toggle */}
           <Button
-            variant={showFilterBuilder ? 'filled' : 'default'}
+            variant={filtersPanelOpen ? 'filled' : 'default'}
             leftSection={<IconFilter size={16} />}
-            onClick={() => setShowFilterBuilder(!showFilterBuilder)}
+            onClick={() => setFiltersPanelOpen((prev) => !prev)}
           >
             Filter {viewFilters.length > 0 && `(${viewFilters.length})`}
           </Button>
@@ -247,12 +278,12 @@ export function EnhancedAssetList({ onView, onEdit, onCreateNew }: EnhancedAsset
         </Group>
       </Group>
 
-      {/* T210: Filter builder panel */}
-      {showFilterBuilder && (
+      {/* T210: Filter builder panel with smooth collapse animation */}
+      <Collapse in={filtersPanelOpen}>
         <Card withBorder>
           <FilterBuilder filters={viewFilters} onChange={setViewFilters} />
         </Card>
-      )}
+      </Collapse>
 
       {/* Render current view mode */}
       {renderView()}

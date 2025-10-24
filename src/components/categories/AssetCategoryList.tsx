@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { useState } from 'react';
 import {
   ActionIcon,

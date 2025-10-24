@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { useEffect } from 'react';
 import {
   Button,
@@ -9,15 +9,16 @@ import {
   ActionIcon,
   Paper,
   Divider,
+  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconInfoCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useCreateCategory, useUpdateCategory } from '../../hooks/useCategories';
 import { CustomFieldDefinitionInput } from './CustomFieldDefinitionInput';
 import { CustomFieldPreview } from './CustomFieldPreview';
 import { IconPicker } from './IconPicker';
-import type { AssetCategory, CategoryCreate, CustomFieldDefinition } from '../../types/entities';
+import type { AssetCategory, CustomFieldDefinition, CategoryCreate, CategoryUpdate } from '../../types/entities';
 
 interface AssetCategoryFormProps {
   category?: AssetCategory;
@@ -38,11 +39,13 @@ export function AssetCategoryForm({ category, initialData, onSuccess, onCancel }
   const form = useForm<{
     name: string;
     icon?: string;
+    assetNameTemplate?: string;
     customFields: CustomFieldDefinition[];
   }>({
     initialValues: {
       name: category?.name || initialData?.name || '',
       icon: category?.icon || initialData?.icon || '',
+  assetNameTemplate: category?.assetNameTemplate ?? '%Manufacturer% %Model% %Asset Number%',
       customFields: category?.customFields || (initialData?.customFields.map((field, index) => ({
         ...field,
         id: `field-${Date.now().toString()}-${index.toString()}`,
@@ -79,13 +82,16 @@ export function AssetCategoryForm({ category, initialData, onSuccess, onCancel }
   const handleSubmit = async (values: typeof form.values) => {
     try {
       if (isEditing) {
+        const payload: CategoryUpdate = {
+          name: values.name,
+          icon: values.icon || undefined,
+          assetNameTemplate: values.assetNameTemplate || undefined,
+          customFields: values.customFields,
+        };
+
         const updated = await updateCategory.mutateAsync({
           id: category.id,
-          data: {
-            name: values.name,
-            icon: values.icon || undefined,
-            customFields: values.customFields,
-          },
+          data: payload,
         });
         notifications.show({
           title: 'Success',
@@ -97,6 +103,7 @@ export function AssetCategoryForm({ category, initialData, onSuccess, onCancel }
         const categoryData: CategoryCreate = {
           name: values.name,
           icon: values.icon || undefined,
+          assetNameTemplate: values.assetNameTemplate || undefined,
           customFields: values.customFields,
         };
         const created = await createCategory.mutateAsync(categoryData);
@@ -161,6 +168,36 @@ export function AssetCategoryForm({ category, initialData, onSuccess, onCancel }
         </Stack>
 
         <Divider label="Custom Fields" labelPosition="left" />
+
+        <Divider label="Asset Name Template" labelPosition="left" mt="xl" />
+
+        <Text size="sm" c="dimmed">
+          Define how asset names are generated for this category. Use variables like %Manufacturer%, %Model%, %Asset Number% and any custom field names wrapped in %%. Example: <code>%Manufacturer% %Model% %Asset Number%</code>
+        </Text>
+
+        <Group align="flex-start">
+          <TextInput
+            label="Default Asset Name Template"
+            placeholder="%Manufacturer% %Model% %Asset Number%"
+            {...form.getInputProps('assetNameTemplate')}
+            style={{ flex: 1 }}
+          />
+          <Tooltip
+            label={<div>
+              <div><strong>Available variables</strong></div>
+              <div>%Manufacturer%</div>
+              <div>%Model%</div>
+              <div>%Asset Number%</div>
+              <div>%Serial Number%</div>
+              <div>Also use custom field names like %Color%</div>
+            </div>}
+            withArrow
+          >
+            <ActionIcon variant="light">
+              <IconInfoCircle size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
 
         <Text size="sm" c="dimmed">
           Define custom fields that will be available for all assets in this category.

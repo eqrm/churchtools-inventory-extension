@@ -41,6 +41,7 @@ export function formatAssetStatus(status: AssetStatus): string {
         installed: 'Installiert',
         sold: 'Verkauft',
         destroyed: 'Zerstört',
+        deleted: 'Gelöscht',
     };
     return statusMap[status];
 }
@@ -52,6 +53,7 @@ export function formatBookingStatus(status: BookingStatus): string {
     const statusMap: Record<BookingStatus, string> = {
         pending: 'Ausstehend',
         approved: 'Genehmigt',
+        declined: 'Abgelehnt',
         active: 'Aktiv',
         completed: 'Abgeschlossen',
         overdue: 'Überfällig',

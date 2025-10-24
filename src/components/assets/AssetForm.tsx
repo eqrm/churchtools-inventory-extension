@@ -1,5 +1,5 @@
-/* eslint-disable max-lines-per-function */
-import { useEffect, useMemo } from 'react';
+ 
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -21,9 +21,15 @@ import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 import { useCategories, useCategory } from '../../hooks/useCategories';
 import { useCreateAsset, useCreateMultiAsset, useUpdateAsset } from '../../hooks/useAssets';
 import { useAssetPrefixes } from '../../hooks/useAssetPrefixes';
+import { useMasterData } from '../../hooks/useMasterDataNames';
+import { generateAssetNameFromTemplate, DEFAULT_ASSET_NAME_TEMPLATE } from '../../utils/assetNameTemplate';
+import { MASTER_DATA_DEFINITIONS, normalizeMasterDataName } from '../../utils/masterData';
 import { CustomFieldInput } from './CustomFieldInput';
+import { MasterDataSelectInput } from '../common/MasterDataSelectInput';
+// Photo features removed due to storage size constraints
 import type { Asset, AssetCreate, AssetStatus, CustomFieldValue } from '../../types/entities';
-import { validateCustomFieldValue } from '../../utils/validators';
+ import { validateCustomFieldValue } from '../../utils/validators';
+import { ASSET_STATUS_OPTIONS } from '../../constants/assetStatuses';
 
 interface AssetFormProps {
   asset?: Asset;
@@ -43,26 +49,24 @@ interface AssetFormValues {
   parentAssetId?: string;
   isParent: boolean;
   quantity: number;
+  bookable: boolean; // T070: Allow asset to be booked
   customFieldValues: Record<string, CustomFieldValue>;
 }
 
-const STATUS_OPTIONS: { value: AssetStatus; label: string }[] = [
-  { value: 'available', label: 'Available' },
-  { value: 'in-use', label: 'In Use' },
-  { value: 'broken', label: 'Broken' },
-  { value: 'in-repair', label: 'In Repair' },
-  { value: 'installed', label: 'Installed' },
-  { value: 'sold', label: 'Sold' },
-  { value: 'destroyed', label: 'Destroyed' },
-];
 
 export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
   const isEditing = Boolean(asset);
   const { data: categories = [] } = useCategories();
   const { data: prefixes = [] } = useAssetPrefixes();
+  const { names: locationNames, addItem: addLocation } = useMasterData(MASTER_DATA_DEFINITIONS.locations);
+  const { names: manufacturerNames, addItem: addManufacturer } = useMasterData(
+    MASTER_DATA_DEFINITIONS.manufacturers
+  );
+  const { names: modelNames, addItem: addModel } = useMasterData(MASTER_DATA_DEFINITIONS.models);
   const createAsset = useCreateAsset();
   const createMultiAsset = useCreateMultiAsset();
   const updateAsset = useUpdateAsset();
+
 
   const form = useForm<AssetFormValues>({
     initialValues: {
@@ -71,12 +75,13 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       model: asset?.model || '',
       description: asset?.description || '',
       categoryId: asset?.category.id || '',
-      prefixId: '', // Default to first prefix or empty
+  prefixId: '', // Default to first prefix or empty
       status: asset?.status || 'available',
       location: asset?.location || '',
       parentAssetId: asset?.parentAssetId || '',
       isParent: asset?.isParent || false,
       quantity: 1,
+      bookable: asset?.bookable ?? true, // T070: Default to bookable
       customFieldValues: asset?.customFieldValues || {},
     },
     validate: {
@@ -95,6 +100,49 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       categoryId: (value) => (!value ? 'Category is required' : null),
     },
   });
+
+  // Track whether the user has manually edited the name field. If not, we auto-fill
+  // the name with a generated value based on other fields so the user sees a preview.
+  const [nameManuallyEdited, setNameManuallyEdited] = useState<boolean>(Boolean(asset?.name));
+
+  // Compute the generated name preview from template and relevant fields
+  const generatedName = useMemo(() => {
+    const prefixPreview = (() => {
+      const selected = prefixes.find(p => p.id === form.values.prefixId);
+      if (selected) return `${selected.prefix}-${String(selected.sequence + 1).padStart(3, '0')}`;
+      return '';
+    })();
+
+    const data = {
+      Manufacturer: form.values.manufacturer || '',
+      Model: form.values.model || '',
+      'Model Name': form.values.model || '',
+      'Asset Number': prefixPreview,
+      'Serial Number': '',
+    } as Record<string, string>;
+
+    return generateAssetNameFromTemplate(DEFAULT_ASSET_NAME_TEMPLATE, data);
+  }, [form.values.manufacturer, form.values.model, form.values.prefixId, prefixes]);
+
+  // Auto-fill the name if the user hasn't manually typed one
+  useEffect(() => {
+    if (!nameManuallyEdited) {
+      form.setFieldValue('name', generatedName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedName]);
+
+  // When editing an existing asset, ensure its manufacturer/model are present in
+  // the localStorage-backed lists so the CreatableSelect shows them consistently
+  useEffect(() => {
+    if (asset) {
+      if (asset.location) addLocation(asset.location);
+      if (asset.manufacturer) addManufacturer(asset.manufacturer);
+      if (asset.model) addModel(asset.model);
+    }
+    // only run when asset changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset?.id]);
 
   // Get selected category details
   const { data: selectedCategory } = useCategory(form.values.categoryId || '');
@@ -122,6 +170,17 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
 
   const handleSubmit = async (values: AssetFormValues) => {
     try {
+      // Ensure manufacturer/model values are persisted to localStorage-backed lists
+      if (values.location) {
+        addLocation(values.location);
+      }
+      if (values.manufacturer) {
+        addManufacturer(values.manufacturer);
+      }
+      if (values.model) {
+        addModel(values.model);
+      }
+
       // Validate custom fields
       if (selectedCategory) {
         for (const field of selectedCategory.customFields) {
@@ -150,6 +209,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
             status: values.status,
             location: values.location || undefined,
             parentAssetId: values.parentAssetId || undefined,
+            bookable: values.bookable, // T070: Include bookable status
             customFieldValues: values.customFieldValues,
             isParent: asset.isParent,
             childAssetIds: asset.childAssetIds,
@@ -185,6 +245,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
           isParent: values.isParent,
           parentAssetId: values.parentAssetId || undefined,
           childAssetIds: [],
+          bookable: values.bookable, // T070: Include bookable status
           customFieldValues: values.customFieldValues,
           prefixId: values.prefixId || undefined, // T272: Pass selected prefix
         };
@@ -201,6 +262,8 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
             throw new Error('Failed to create parent asset');
           }
 
+          // Photo upload removed — parent asset created without photos
+
           notifications.show({
             title: 'Success',
             message: `Created parent asset "${values.name}" with ${values.quantity} children (${parentAsset.assetNumber})`,
@@ -212,6 +275,16 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
           }
         } else {
           const created = await createAsset.mutateAsync(newAssetData);
+
+          // Photo upload removed — asset created without photos
+
+          // Debug: show localStorage after creation
+          try {
+            console.warn('AssetForm: post-create assetManufacturers', localStorage.getItem('assetManufacturers'));
+            console.warn('AssetForm: post-create assetModels', localStorage.getItem('assetModels'));
+          } catch (err) {
+            console.warn('AssetForm: failed to read localStorage after create', err);
+          }
 
           notifications.show({
             title: 'Success',
@@ -255,8 +328,19 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                 placeholder="Asset name"
                 required
                 {...form.getInputProps('name')}
+                onChange={(e) => {
+                  // mark manual edit when user types anything different than generated preview
+                  const val = e.currentTarget.value;
+                  setNameManuallyEdited(val.trim().length > 0 && val !== generatedName);
+                  form.setFieldValue('name', val);
+                }}
+                
               />
+
+              {/* Compact UI: no inline generated-name preview; auto-fill still applies when the user hasn't edited the name. */}
             </Grid.Col>
+
+            {/* asset-number info removed — generation is handled server-side and not shown here */}
 
             <Grid.Col span={{ base: 12, md: 6 }}>
               <Select
@@ -297,6 +381,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                         })()
                       : 'Choose a prefix for this asset\'s numbering sequence'
                   }
+                  descriptionProps={{ component: 'div' }}
                   data={prefixes.map(prefix => ({
                     value: prefix.id,
                     label: `${prefix.prefix} - ${prefix.description}`,
@@ -311,49 +396,69 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                 label="Status"
                 placeholder="Select status"
                 required
-                data={STATUS_OPTIONS}
+                data={[...ASSET_STATUS_OPTIONS]}
                 {...form.getInputProps('status')}
               />
             </Grid.Col>
 
+            {/* T070: Bookable checkbox for asset availability filtering */}
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <Select
+              <Checkbox
+                label="Allow Booking"
+                description="Enable this asset to be booked by users"
+                {...form.getInputProps('bookable', { type: 'checkbox' })}
+                mt="md"
+              />
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, md: 6 }}>
+              <MasterDataSelectInput
+                names={locationNames}
                 label="Location"
                 placeholder="Select or type location"
-                description="Choose from pre-defined locations or type a new one and press Enter"
-                searchable
-                allowDeselect
-                data={useMemo(() => {
-                  // Get locations from localStorage
-                  const savedLocations = JSON.parse(
-                    localStorage.getItem('assetLocations') || '[]'
-                  ) as Array<{ name: string }>;
-                  
-                  return savedLocations.map((loc) => ({ value: loc.name, label: loc.name }));
-                }, [])}
-                onSearchChange={(query) => {
-                  // Allow typing custom location
-                  if (query && !form.values.location) {
-                    form.setFieldValue('location', query);
-                  }
+                description="Choose from pre-defined locations or add a new one"
+                value={form.values.location || ''}
+                onChange={(next) => form.setFieldValue('location', next)}
+                nothingFound="No locations"
+                error={form.errors['location']}
+                onCreateOption={(name) => {
+                  const created = addLocation(name);
+                  return created?.name ?? normalizeMasterDataName(name);
                 }}
-                {...form.getInputProps('location')}
               />
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <TextInput
+              <MasterDataSelectInput
+                names={manufacturerNames}
                 label="Manufacturer"
-                placeholder="Manufacturer name"
-                {...form.getInputProps('manufacturer')}
+                placeholder="Select or type manufacturer name"
+                description="Choose from existing manufacturers or add a new one"
+                value={form.values.manufacturer || ''}
+                onChange={(next) => form.setFieldValue('manufacturer', next)}
+                nothingFound="No manufacturers"
+                error={form.errors['manufacturer'] as string | undefined}
+                onCreateOption={(name) => {
+                  const created = addManufacturer(name);
+                  return created?.name ?? normalizeMasterDataName(name);
+                }}
               />
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 6 }}>
-              <TextInput
+              <MasterDataSelectInput
+                names={modelNames}
                 label="Model"
-                placeholder="Model number or name"
-                {...form.getInputProps('model')}
+                placeholder="Select or type model name"
+                description="Choose from existing models or add a new one"
+                value={form.values.model || ''}
+                onChange={(next) => form.setFieldValue('model', next)}
+                nothingFound="No models"
+                error={form.errors['model'] as string | undefined}
+                onCreateOption={(name) => {
+                  const created = addModel(name);
+                  return created?.name ?? normalizeMasterDataName(name);
+                }}
               />
             </Grid.Col>
 
@@ -414,6 +519,8 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
               </Grid>
             </>
           )}
+
+          {/* Photo Upload Section removed */}
 
           <Group justify="flex-end" mt="md">
             {onCancel && (

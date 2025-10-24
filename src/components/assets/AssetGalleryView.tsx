@@ -1,4 +1,4 @@
-import { SimpleGrid, Card, Text, Badge, Group, Stack } from '@mantine/core';
+import { SimpleGrid, Card, Text, Badge, Group, Stack, AspectRatio, Image } from '@mantine/core';
 import { IconPhoto } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import type { Asset } from '../../types/entities';
@@ -34,8 +34,17 @@ export function AssetGalleryView({ assets }: AssetGalleryViewProps) {
           style={{ cursor: 'pointer', textDecoration: 'none' }}
         >
           <Card.Section>
-                        {/* TODO: Add photo support when implemented */}
-            <IconPhoto size={64} style={{ margin: 'auto', color: 'var(--mantine-color-gray-4)' }} />
+            {asset.photos && asset.photos.find(p => p.isMain) ? (
+              <AspectRatio ratio={16/9}>
+                <Image
+                  src={asset.photos.find(p => p.isMain)?.thumbnailUrl}
+                  alt={`${asset.name} main photo`}
+                  fit="cover"
+                />
+              </AspectRatio>
+            ) : (
+              <IconPhoto size={64} style={{ margin: 'auto', color: 'var(--mantine-color-gray-4)' }} />
+            )}
           </Card.Section>
 
           <Stack gap="xs" mt="md">

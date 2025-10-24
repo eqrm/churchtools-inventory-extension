@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { useState } from 'react';
 import { Button, Container, Group, Modal, Stack, Title, Grid } from '@mantine/core';
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';

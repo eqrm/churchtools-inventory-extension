@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { Paper, Title, Group, Button, Stack, Text, Loader, SimpleGrid } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
+import DateRangeCalendar from '../common/DateRangeCalendar'
 import { DataTable } from 'mantine-datatable';
 import { IconDownload } from '@tabler/icons-react';
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -83,13 +83,18 @@ export function BookingHistoryReport() {
       <Paper p="md" withBorder>
         <Group>
           <Text fw={500}>Zeitraum:</Text>
-          <DatePickerInput
-            type="range"
-            placeholder="Zeitraum auswählen"
-            value={dateRange}
-            onChange={setDateRange}
-            style={{ flex: 1, maxWidth: 400 }}
-          />
+          <div style={{ flex: 1, maxWidth: 400 }}>
+            <DateRangeCalendar
+              value={{ start: dateRange[0] ? dateRange[0].toISOString().split('T')[0] : undefined, end: dateRange[1] ? dateRange[1].toISOString().split('T')[0] : undefined }}
+              onChange={(r) => {
+                if (!r || !r.start || !r.end) {
+                  setDateRange([null, null])
+                  return
+                }
+                setDateRange([new Date(r.start), new Date(r.end)])
+              }}
+            />
+          </div>
         </Group>
       </Paper>
 
@@ -103,6 +108,7 @@ export function BookingHistoryReport() {
         striped
         highlightOnHover
         records={historyData.mostBookedAssets}
+        idAccessor="assetId"
         columns={[
           {
             accessor: 'assetNumber',
@@ -131,6 +137,7 @@ export function BookingHistoryReport() {
         striped
         highlightOnHover
         records={historyData.bookingsByMonth}
+        idAccessor="month"
         columns={[
           {
             accessor: 'month',

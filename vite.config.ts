@@ -4,8 +4,16 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default ({ mode }: { mode: string }) => {
     process.env = { ...process.env, ...loadEnv(mode, process.cwd()) };
+    const extensionKey = process.env.VITE_KEY;
+
+    if (!extensionKey) {
+        throw new Error('VITE_KEY environment variable is required to build the extension');
+    }
+
+    const basePath = mode === 'production' ? `/ccm/${extensionKey}/` : `/ccm/dev${extensionKey}/`;
+
     return defineConfig({
-        base: `/ccm/${process.env.VITE_KEY}/`,
+        base: basePath,
         plugins: [react()],
         build: {
             // Bundle size optimization
@@ -40,8 +48,8 @@ export default ({ mode }: { mode: string }) => {
                     },
                 },
             },
-            // Chunk size warning limit (200 KB = 200,000 bytes)
-            chunkSizeWarningLimit: 200,
+            // Chunk size warning limit (5 MB = 5,000 KB for ChurchTools 20MB deployment limit)
+            chunkSizeWarningLimit: 5000,
         },
         optimizeDeps: {
             // Pre-bundle dependencies for faster dev server

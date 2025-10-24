@@ -35,7 +35,7 @@ function NewCategoryMenu({
   );
 }
 
-/* eslint-disable max-lines-per-function */
+ 
 export function CategoriesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);

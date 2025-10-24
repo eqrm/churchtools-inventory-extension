@@ -1,9 +1,10 @@
 import { Container, Stack, Tabs, Title } from '@mantine/core';
-import { IconAdjustments, IconBarcode, IconHash, IconMapPin } from '@tabler/icons-react';
+import { IconBarcode, IconHash, IconMapPin, IconBuilding, IconTag } from '@tabler/icons-react';
 import { useState } from 'react';
-import { AssetPrefixSettings } from '../components/settings/AssetPrefixSettings';
 import { AssetPrefixList } from '../components/settings/AssetPrefixList';
 import { LocationSettings } from '../components/settings/LocationSettings';
+import { ManufacturerSettings } from '../components/settings/ManufacturerSettings';
+import { ModelSettings } from '../components/settings/ModelSettings';
 import { ScannerModelList } from '../components/settings/ScannerModelList';
 import { ScannerModelForm } from '../components/settings/ScannerModelForm';
 import type { ScannerModel, ScannerModelCreate } from '../types/entities';
@@ -29,7 +30,7 @@ export function SettingsPage() {
       <Stack gap="lg">
         <Title order={1}>Settings</Title>
 
-        <Tabs defaultValue="prefix">
+        <Tabs defaultValue="prefixes">
           <SettingsTabs
             scannerModels={scannerModels}
             onAddModel={handleAddModel}
@@ -120,11 +121,14 @@ function SettingsTabs({ scannerModels, onAddModel, onEditModel, onDeleteModel }:
   return (
     <>
       <Tabs.List>
-        <Tabs.Tab value="prefix" leftSection={<IconHash size={16} />}>
-          Asset Numbering
-        </Tabs.Tab>
         <Tabs.Tab value="prefixes" leftSection={<IconHash size={16} />}>
           Asset Prefixes
+        </Tabs.Tab>
+        <Tabs.Tab value="manufacturers" leftSection={<IconBuilding size={16} />}>
+          Manufacturers
+        </Tabs.Tab>
+        <Tabs.Tab value="models" leftSection={<IconTag size={16} />}>
+          Models
         </Tabs.Tab>
         <Tabs.Tab value="locations" leftSection={<IconMapPin size={16} />}>
           Locations
@@ -132,17 +136,16 @@ function SettingsTabs({ scannerModels, onAddModel, onEditModel, onDeleteModel }:
         <Tabs.Tab value="scanners" leftSection={<IconBarcode size={16} />}>
           Scanners
         </Tabs.Tab>
-        <Tabs.Tab value="general" leftSection={<IconAdjustments size={16} />}>
-          General
-        </Tabs.Tab>
       </Tabs.List>
-
-      <Tabs.Panel value="prefix" pt="md">
-        <AssetPrefixSettings />
-      </Tabs.Panel>
 
       <Tabs.Panel value="prefixes" pt="md">
         <AssetPrefixList />
+      </Tabs.Panel>
+      <Tabs.Panel value="manufacturers" pt="md">
+        <ManufacturerSettings />
+      </Tabs.Panel>
+      <Tabs.Panel value="models" pt="md">
+        <ModelSettings />
       </Tabs.Panel>
 
       <Tabs.Panel value="locations" pt="md">
@@ -156,13 +159,6 @@ function SettingsTabs({ scannerModels, onAddModel, onEditModel, onDeleteModel }:
           onEdit={onEditModel}
           onDelete={onDeleteModel}
         />
-      </Tabs.Panel>
-
-      <Tabs.Panel value="general" pt="md">
-        <Stack gap="md">
-          <Title order={3}>General Settings</Title>
-          {/* Future: Add general settings like date format, timezone, etc. */}
-        </Stack>
       </Tabs.Panel>
     </>
   );

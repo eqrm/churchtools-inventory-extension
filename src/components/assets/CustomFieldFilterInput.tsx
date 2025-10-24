@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+ 
 import { Select, MultiSelect, TextInput, NumberInput } from '@mantine/core';
 import type { CustomFieldDefinition } from '../../types/entities';
 

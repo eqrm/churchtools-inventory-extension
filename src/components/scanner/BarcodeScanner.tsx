@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 import { IconCamera, IconKeyboard, IconSettings, IconX } from '@tabler/icons-react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -12,6 +12,8 @@ interface BarcodeScannerProps {
   enableCamera?: boolean;
   enableKeyboard?: boolean;
   showSetupButton?: boolean;
+  scannerModels?: ScannerModel[];
+  selectedScannerId?: string | null;
 }
 
 type ScanMode = 'keyboard' | 'camera';
@@ -26,7 +28,7 @@ type ScanMode = 'keyboard' | 'camera';
  * - Buffer management for rapid character input
  * - Cleanup on unmount
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function BarcodeScanner({
   onScan,
   onError,
@@ -34,6 +36,8 @@ export function BarcodeScanner({
   enableCamera = true,
   enableKeyboard = true,
   showSetupButton = true,
+  scannerModels,
+  selectedScannerId,
 }: BarcodeScannerProps) {
   const [mode, setMode] = useState<ScanMode>('keyboard');
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -55,11 +59,43 @@ export function BarcodeScanner({
     }
   }
 
+  const availableModels = useMemo<ScannerModel[]>(() => {
+    if (scannerModels && scannerModels.length > 0) {
+      return scannerModels
+    }
+    return loadScannerModels()
+  }, [scannerModels])
+
+  useEffect(() => {
+    if (availableModels.length === 0) {
+      setSelectedModel(null)
+      return
+    }
+
+    const preferred = selectedScannerId
+      ? availableModels.find((model) => model.id === selectedScannerId) ?? availableModels[0]
+      : availableModels[0]
+
+    setSelectedModel((prev) => {
+      if (prev && preferred && prev.id === preferred.id) {
+        return prev
+      }
+      return preferred ?? null
+    })
+  }, [availableModels, selectedScannerId])
+
   const handleOpenSetup = () => {
-    const models = loadScannerModels()
-    if (models.length > 0 && models[0]) {
-      setSelectedModel(models[0])
+    if (selectedModel) {
       setSetupModalOpen(true)
+      return
+    }
+
+    if (availableModels.length > 0) {
+      const fallbackModel = availableModels[0]
+      if (fallbackModel) {
+        setSelectedModel(fallbackModel)
+        setSetupModalOpen(true)
+      }
     }
   }
 
@@ -272,7 +308,7 @@ export function BarcodeScanner({
             )}
           </Group>
           <Group>
-            {showSetupButton && loadScannerModels().length > 0 && (
+            {showSetupButton && availableModels.length > 0 && (
               <Button
                 variant="light"
                 leftSection={<IconSettings size={16} />}

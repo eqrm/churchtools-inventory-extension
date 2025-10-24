@@ -6,6 +6,7 @@ import { Stack, Select, Textarea, Title, Text, Group } from '@mantine/core'
 import { Dropzone, IMAGE_MIME_TYPE, type FileWithPath } from '@mantine/dropzone'
 import { IconUpload, IconX, IconPhoto } from '@tabler/icons-react'
 import { useState } from 'react'
+import { bookingStrings } from '../../i18n/bookingStrings'
 
 interface ConditionAssessmentProps {
   rating?: 'excellent' | 'good' | 'fair' | 'poor' | 'damaged'
@@ -34,15 +35,15 @@ function PhotoDropzone({ onPhotosAdded }: { onPhotosAdded: (photos: string[]) =>
 
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={500}>Fotos</Text>
+      <Text size="sm" fw={500}>{bookingStrings.condition.photos}</Text>
       <Dropzone onDrop={handleDrop} accept={IMAGE_MIME_TYPE} maxSize={5 * 1024 ** 2}>
         <Group justify="center" gap="xs" style={{ minHeight: 80, pointerEvents: 'none' }}>
           <Dropzone.Accept><IconUpload size={32} /></Dropzone.Accept>
           <Dropzone.Reject><IconX size={32} /></Dropzone.Reject>
           <Dropzone.Idle><IconPhoto size={32} /></Dropzone.Idle>
           <div>
-            <Text size="sm">Bilder hierher ziehen</Text>
-            <Text size="xs" c="dimmed">Max. 5MB</Text>
+            <Text size="sm">{bookingStrings.condition.dragImagesHere}</Text>
+            <Text size="xs" c="dimmed">{bookingStrings.condition.maxSize}</Text>
           </div>
         </Group>
       </Dropzone>
@@ -53,13 +54,13 @@ function PhotoDropzone({ onPhotosAdded }: { onPhotosAdded: (photos: string[]) =>
 function RatingSelect({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
   return (
     <Select
-      label="Zustand"
+      label={bookingStrings.condition.rating}
       data={[
-        { value: 'excellent', label: 'Ausgezeichnet' },
-        { value: 'good', label: 'Gut' },
-        { value: 'fair', label: 'Akzeptabel' },
-        { value: 'poor', label: 'Schlecht' },
-        { value: 'damaged', label: 'Beschädigt' },
+        { value: 'excellent', label: bookingStrings.condition.excellent },
+        { value: 'good', label: bookingStrings.condition.good },
+        { value: 'fair', label: bookingStrings.condition.fair },
+        { value: 'poor', label: bookingStrings.condition.poor },
+        { value: 'damaged', label: bookingStrings.condition.damaged },
       ]}
       value={value}
       onChange={(v) => onChange(v || 'good')}
@@ -87,15 +88,15 @@ export function ConditionAssessmentWithPhotos({
 
   return (
     <Stack gap="md">
-      <Title order={4}>Zustandsbewertung</Title>
+      <Title order={4}>{bookingStrings.condition.title}</Title>
       <RatingSelect
         value={rating}
         onChange={(v) => onRatingChange?.(v)}
         disabled={readOnly}
       />
       <Textarea
-        label="Notizen"
-        placeholder="Beschädigungen, Probleme, oder Anmerkungen..."
+        label={bookingStrings.condition.notes}
+        placeholder={bookingStrings.condition.notesPlaceholder}
         value={notes}
         onChange={(e) => onNotesChange?.(e.currentTarget.value)}
         readOnly={readOnly}
@@ -105,7 +106,7 @@ export function ConditionAssessmentWithPhotos({
       {previews.length > 0 && (
         <Group gap="xs">
           {previews.map((preview, idx) => (
-            <img key={idx} src={preview} alt={`Foto ${idx + 1}`} style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 4 }} />
+            <img key={idx} src={preview} alt={bookingStrings.condition.photoAlt.replace('{number}', (idx + 1).toString())} style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 4 }} />
           ))}
         </Group>
       )}

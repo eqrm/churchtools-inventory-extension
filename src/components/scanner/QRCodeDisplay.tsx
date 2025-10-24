@@ -22,7 +22,7 @@ interface QRCodeDisplayProps {
 /**
  * Displays a QR code for the given value
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function QRCodeDisplay({ value, options, alt, size = 200 }: QRCodeDisplayProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

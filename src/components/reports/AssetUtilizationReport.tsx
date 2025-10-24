@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Paper, Title, Group, Button, Select, Stack, Text, Loader } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
+import DateRangeCalendar from '../common/DateRangeCalendar'
 import { DataTable } from 'mantine-datatable';
 import { IconDownload, IconFilter } from '@tabler/icons-react';
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -47,14 +47,18 @@ function UtilizationFilters({
       </Group>
 
       <Group mt="md">
-        <DatePickerInput
-          type="range"
-          label="Zeitraum"
-          placeholder="Zeitraum auswählen"
-          value={dateRange}
-          onChange={setDateRange}
-          style={{ flex: 1 }}
-        />
+        <div style={{ flex: 1 }}>
+          <DateRangeCalendar
+            value={{ start: dateRange[0] ? dateRange[0].toISOString().split('T')[0] : undefined, end: dateRange[1] ? dateRange[1].toISOString().split('T')[0] : undefined }}
+            onChange={(r) => {
+              if (!r || !r.start || !r.end) {
+                setDateRange([null, null])
+                return
+              }
+              setDateRange([new Date(r.start), new Date(r.end)])
+            }}
+          />
+        </div>
 
         <Select
           label="Kategorie"
@@ -91,6 +95,7 @@ function UtilizationTable({ data }: { data: AssetUtilizationData[] }) {
       striped
       highlightOnHover
       records={data}
+      idAccessor="assetId"
       columns={[
         {
           accessor: 'assetNumber',

@@ -14,6 +14,7 @@ const STATUS_CONFIG: Record<AssetStatus, { color: string; label: string }> = {
   installed: { color: 'grape', label: 'Installed' },
   sold: { color: 'gray', label: 'Sold' },
   destroyed: { color: 'dark', label: 'Destroyed' },
+  deleted: { color: 'dark', label: 'Deleted' },
 };
 
 export function AssetStatusBadge({ status, size = 'sm' }: AssetStatusBadgeProps) {

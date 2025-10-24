@@ -9,7 +9,7 @@ interface StockTakeReportProps {
 /**
  * StockTakeReport component - Discrepancy report display (T156)
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function StockTakeReport({ session }: StockTakeReportProps) {
   return (
     <Box>
@@ -52,6 +52,7 @@ export function StockTakeReport({ session }: StockTakeReportProps) {
               <DataTable
                 striped
                 records={session.missingAssets}
+                idAccessor="id"
                 columns={[
                   { accessor: 'assetNumber', title: 'Asset Number' },
                   { accessor: 'name', title: 'Name' },

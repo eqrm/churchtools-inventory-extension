@@ -1,4 +1,4 @@
-import { useState, forwardRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, forwardRef } from 'react';
 import {
   ActionIcon,
   Popover,
@@ -8,47 +8,21 @@ import {
   Text,
   Box,
   ScrollArea,
+  Button,
+  Stack,
+  UnstyledButton,
 } from '@mantine/core';
+import { Icon } from '@mdi/react';
+import { mdiChevronDown, mdiClose, mdiHelpCircleOutline } from '@mdi/js';
 import {
-  IconMicrophone,
-  IconDeviceTv,
-  IconBulb,
-  IconCamera,
-  IconMusic,
-  IconHeadphones,
-  IconDeviceSpeaker,
-  IconPlugConnected,
-  IconWifi,
-  IconRouter,
-  IconDeviceLaptop,
-  IconDeviceDesktop,
-  IconKeyboard,
-  IconMouse,
-  IconPrinter,
-  IconPresentation,
-  IconChevronDown,
-  IconX,
-} from '@tabler/icons-react';
-
-// Common icons for inventory categories
-const COMMON_ICONS = [
-  { Icon: IconMicrophone, name: 'Microphone' },
-  { Icon: IconDeviceTv, name: 'TV/Display' },
-  { Icon: IconBulb, name: 'Lighting' },
-  { Icon: IconCamera, name: 'Camera' },
-  { Icon: IconMusic, name: 'Music' },
-  { Icon: IconHeadphones, name: 'Headphones' },
-  { Icon: IconDeviceSpeaker, name: 'Speaker' },
-  { Icon: IconPlugConnected, name: 'Connector' },
-  { Icon: IconWifi, name: 'Cable' },
-  { Icon: IconRouter, name: 'Network' },
-  { Icon: IconDeviceLaptop, name: 'Laptop' },
-  { Icon: IconDeviceDesktop, name: 'Desktop' },
-  { Icon: IconKeyboard, name: 'Keyboard' },
-  { Icon: IconMouse, name: 'Mouse' },
-  { Icon: IconPrinter, name: 'Printer' },
-  { Icon: IconPresentation, name: 'Projector' },
-];
+  CATEGORY_ICON_OPTIONS,
+  normalizeCategoryIconValue,
+  resolveCategoryIconLabel,
+  type CategoryIconOption,
+} from '../../utils/iconMigrationMap';
+import { IconDisplay } from './IconDisplay';
+import { registerDynamicIcon } from '../../utils/iconMigrationMap';
+import { getCachedIconOption, searchIconOptions } from '../../utils/mdiDynamicRegistry';
 
 interface IconPickerProps {
   value?: string;
@@ -56,37 +30,43 @@ interface IconPickerProps {
   disabled?: boolean;
 }
 
-type IconType = typeof COMMON_ICONS[number];
+type IconType = CategoryIconOption;
 
 const IconPickerButton = forwardRef<
   HTMLDivElement,
   {
-    selectedIcon?: IconType;
+    selectedIcon?: IconType | null;
     value?: string;
+    label?: string;
     disabled?: boolean;
     onClick: () => void;
     onClear: () => void;
   }
->(({ selectedIcon, value, disabled, onClick, onClear }, ref) => {
-  const SelectedIconComponent = selectedIcon?.Icon;
-  
+>(({ selectedIcon, value, label, disabled, onClick, onClear }, ref) => {
+  const displayLabel = label || value || 'Select icon';
+
   return (
     <Group gap="xs" ref={ref}>
-      <ActionIcon
+      <Button
         variant="default"
-        size="lg"
+        radius="md"
+        type="button"
         onClick={onClick}
         disabled={disabled}
+        rightSection={<Icon path={mdiChevronDown} size={0.7} />}
+        fullWidth
       >
-        {SelectedIconComponent ? (
-          <SelectedIconComponent size={20} />
-        ) : (
-          <IconChevronDown size={16} />
-        )}
-      </ActionIcon>
-      <Text size="sm" c="dimmed">
-        {value || 'Select icon'}
-      </Text>
+        <Group gap="xs">
+          {selectedIcon ? (
+            <IconDisplay iconName={selectedIcon.value} size={20} />
+          ) : (
+            <Icon path={mdiHelpCircleOutline} size={0.9} />
+          )}
+          <Text size="sm" fw={500} c="inherit">
+            {displayLabel}
+          </Text>
+        </Group>
+      </Button>
       {value && !disabled && (
         <ActionIcon
           variant="subtle"
@@ -97,7 +77,7 @@ const IconPickerButton = forwardRef<
             onClear();
           }}
         >
-          <IconX size={14} />
+          <Icon path={mdiClose} size={0.7} />
         </ActionIcon>
       )}
     </Group>
@@ -112,39 +92,162 @@ function IconGrid({
   onChange,
   onClose,
 }: {
-  filteredIcons: typeof COMMON_ICONS;
+  filteredIcons: CategoryIconOption[];
   value?: string;
   onChange: (value: string) => void;
   onClose: () => void;
 }) {
   return (
     <SimpleGrid cols={4} spacing="xs">
-      {filteredIcons.map(({ Icon, name }) => (
-        <ActionIcon
-          key={name}
-          variant={value === name ? 'filled' : 'default'}
-          size="xl"
-          onClick={() => {
-            onChange(name);
-            onClose();
-          }}
-          title={name}
-        >
-          <Icon size={24} />
-        </ActionIcon>
-      ))}
+      {filteredIcons.map(({ label, value: iconValue }) => {
+        const isSelected = value === iconValue;
+        return (
+          <UnstyledButton
+            key={iconValue}
+            onClick={() => {
+              onChange(iconValue);
+              onClose();
+            }}
+            style={(theme) => ({
+              padding: theme.spacing.xs,
+              borderRadius: theme.radius.md,
+              border: `1px solid ${isSelected ? theme.colors.blue[6] : theme.colors.gray[3]}`,
+              backgroundColor: isSelected ? theme.colors.blue[0] : theme.white,
+              transition: 'border-color 150ms ease, background-color 150ms ease',
+            })}
+            title={label}
+          >
+            <Stack gap={4} align="center">
+              <IconDisplay iconName={iconValue} size={28} />
+              <Text size="xs" c="dimmed" ta="center" lineClamp={2}>
+                {label}
+              </Text>
+            </Stack>
+          </UnstyledButton>
+        );
+      })}
     </SimpleGrid>
   );
 }
 
-/* eslint-disable max-lines-per-function */
+ 
 export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
   const [opened, setOpened] = useState(false);
   const [search, setSearch] = useState('');
 
-  const selectedIcon = COMMON_ICONS.find(icon => icon.name === value);
-  const filteredIcons = COMMON_ICONS.filter(icon =>
-    icon.name.toLowerCase().includes(search.toLowerCase())
+  const normalizedValue = useMemo(() => normalizeCategoryIconValue(value), [value]);
+
+  useEffect(() => {
+    if (value && normalizedValue && value !== normalizedValue) {
+      onChange(normalizedValue);
+    }
+  }, [value, normalizedValue, onChange]);
+
+  const selectedIcon = useMemo(() => {
+    if (!normalizedValue) {
+      return null;
+    }
+    return (
+      CATEGORY_ICON_OPTIONS.find((icon) => icon.value === normalizedValue) ??
+      getCachedIconOption(normalizedValue) ??
+      null
+    );
+  }, [normalizedValue]);
+
+  const [dynamicResults, setDynamicResults] = useState<CategoryIconOption[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const filteredIcons = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) {
+      return CATEGORY_ICON_OPTIONS;
+    }
+
+    const matches = CATEGORY_ICON_OPTIONS.filter((icon) => {
+      const haystack = [icon.label, ...icon.keywords].join(' ').toLowerCase();
+      return haystack.includes(term);
+    });
+
+    if (dynamicResults.length === 0) {
+      return matches;
+    }
+
+    const seen = new Set<string>();
+    const combined: CategoryIconOption[] = [];
+
+    for (const option of dynamicResults) {
+      if (!seen.has(option.value)) {
+        seen.add(option.value);
+        combined.push(option);
+      }
+    }
+
+    for (const option of matches) {
+      if (!seen.has(option.value)) {
+        seen.add(option.value);
+        combined.push(option);
+      }
+    }
+
+    return combined;
+  }, [search, dynamicResults]);
+
+  useEffect(() => {
+    const term = search.trim();
+    if (!term) {
+      setDynamicResults([]);
+      setSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearching(true);
+
+    const timer = setTimeout(() => {
+      void searchIconOptions(term, 60)
+        .then((options) => {
+          if (cancelled) {
+            return;
+          }
+          setDynamicResults(options);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setDynamicResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setSearching(false);
+          }
+        });
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  const selectedLabel = useMemo(() => {
+    if (selectedIcon) {
+      return selectedIcon.label;
+    }
+    return resolveCategoryIconLabel(value ?? undefined);
+  }, [selectedIcon, value]);
+
+  const handleSelect = useCallback(
+    (newValue: string) => {
+      if (!newValue) {
+        return;
+      }
+      const option = getCachedIconOption(newValue);
+      if (option) {
+        registerDynamicIcon(option);
+      }
+      onChange(newValue);
+    },
+    [onChange],
   );
 
   return (
@@ -152,7 +255,8 @@ export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
       <Popover.Target>
         <IconPickerButton
           selectedIcon={selectedIcon}
-          value={value}
+          value={normalizedValue ?? value}
+          label={selectedLabel}
           disabled={disabled}
           onClick={() => {
             if (!disabled) setOpened(!opened);
@@ -176,13 +280,18 @@ export function IconPicker({ value, onChange, disabled }: IconPickerProps) {
           <ScrollArea h={300}>
             <IconGrid
               filteredIcons={filteredIcons}
-              value={value}
-              onChange={onChange}
+              value={normalizedValue}
+              onChange={handleSelect}
               onClose={() => {
                 setOpened(false);
               }}
             />
-            {filteredIcons.length === 0 && (
+            {searching && (
+              <Text size="xs" c="dimmed" ta="center" py="sm">
+                Searching the MDI library...
+              </Text>
+            )}
+            {!searching && filteredIcons.length === 0 && (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 No icons found
               </Text>

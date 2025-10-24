@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
-import { Modal, Stack, Text, Title } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Modal, Stack, Text, Select } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from './BarcodeScanner';
 import { ScannerInput } from './ScannerInput';
 import { provideScanSuccessFeedback, provideScanErrorFeedback } from '../../services/scanner/ScanFeedback';
 import { useStorageProvider } from '../../hooks/useStorageProvider';
 import { useScannerStore } from '../../stores/scannerStore';
+import { useScannerPreference } from '../../hooks/useScannerPreference';
+import type { ScannerModel } from '../../types/entities';
 
 interface QuickScanModalProps {
   opened: boolean;
@@ -23,11 +25,25 @@ interface QuickScanModalProps {
  * - Audio/visual feedback
  * - Keyboard shortcut support (Alt+S)
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
   const navigate = useNavigate();
   const storage = useStorageProvider();
   const addScan = useScannerStore((state) => state.addScan);
+  const { preferredScannerId, setPreference } = useScannerPreference();
+  const [scannerModels, setScannerModels] = useState<ScannerModel[]>([]);
+
+  // Load scanner models from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('scannerModels');
+      if (stored) {
+        setScannerModels(JSON.parse(stored) as ScannerModel[]);
+      }
+    } catch (error) {
+      console.warn('Failed to load scanner models:', error);
+    }
+  }, []);
 
   // Detect platform for correct keyboard shortcut display
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -103,7 +119,7 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
     <Modal
       opened={opened}
       onClose={onClose}
-      title={<Title order={3}>Quick Scan</Title>}
+      title="Quick Scan"
       size="lg"
       centered
     >
@@ -112,12 +128,30 @@ export function QuickScanModal({ opened, onClose }: QuickScanModalProps) {
           Scan a barcode or enter a barcode/asset number to quickly view asset details
         </Text>
 
+        {/* Scanner Selection */}
+        {scannerModels.length > 0 && (
+          <Select
+            label="Scanner Model"
+            placeholder="Select scanner model"
+            description="Choose your scanner model for optimized scanning"
+            data={scannerModels.map(model => ({
+              value: model.id,
+              label: `${model.manufacturer} ${model.modelName}`,
+            }))}
+            value={preferredScannerId || null}
+            onChange={(value) => setPreference(value)}
+            allowDeselect
+          />
+        )}
+
         {/* Barcode Scanner */}
         <BarcodeScanner
           onScan={handleScan}
           onError={handleError}
           enableCamera={true}
           enableKeyboard={true}
+          scannerModels={scannerModels}
+          selectedScannerId={preferredScannerId}
         />
 
         {/* Manual Entry Fallback */}

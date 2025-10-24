@@ -1,5 +1,5 @@
-/* eslint-disable max-lines-per-function */
-import { useState, useMemo, memo } from 'react';
+ 
+import { useState, useMemo, memo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
@@ -17,12 +17,10 @@ import {
 } from '@mantine/core';
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable';
 import {
-  IconArrowUp,
   IconDots,
   IconEdit,
   IconEye,
   IconFilter,
-  IconLayoutList,
   IconPlus,
   IconSearch,
   IconTrash,
@@ -39,23 +37,17 @@ import { CustomFieldFilterInput } from './CustomFieldFilterInput';
 import { IconDisplay } from '../categories/IconDisplay';
 import { MaintenanceReminderBadge } from '../maintenance/MaintenanceReminderBadge';
 import type { Asset, AssetStatus, AssetFilters } from '../../types/entities';
+import { ASSET_STATUS_OPTIONS } from '../../constants/assetStatuses';
 
 interface AssetListProps {
   onView?: (asset: Asset) => void;
   onEdit?: (asset: Asset) => void;
   onCreateNew?: () => void;
   initialFilters?: AssetFilters;
+  filtersOpen?: boolean;
+  onToggleFilters?: () => void;
+  hideFilterButton?: boolean;
 }
-
-const STATUS_OPTIONS: { value: AssetStatus; label: string }[] = [
-  { value: 'available', label: 'Available' },
-  { value: 'in-use', label: 'In Use' },
-  { value: 'broken', label: 'Broken' },
-  { value: 'in-repair', label: 'In Repair' },
-  { value: 'installed', label: 'Installed' },
-  { value: 'sold', label: 'Sold' },
-  { value: 'destroyed', label: 'Destroyed' },
-];
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'all', label: 'All Assets' },
@@ -64,20 +56,81 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'standalone', label: 'Standalone Assets Only' },
 ];
 
-export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: AssetListProps) {
+const ASSET_PAGE_SIZE_OPTIONS: number[] = [25, 50, 100, 200];
+const ASSET_PAGE_SIZE_STORAGE_KEY = 'asset-list-page-size';
+const DEFAULT_ASSET_PAGE_SIZE = 50;
+
+interface AssetListRow extends Asset {
+  __depth: number;
+  __parentId?: string;
+  __hasVisibleChildren: boolean;
+  __isExpanded?: boolean;
+}
+
+export function AssetList({
+  onView,
+  onEdit,
+  onCreateNew,
+  initialFilters,
+  filtersOpen,
+  onToggleFilters,
+  hideFilterButton,
+}: AssetListProps) {
   const navigate = useNavigate(); // T263 - E4: Router navigation for direct clicks
   const [filters, setFilters] = useState<AssetFilters>(initialFilters || {});
-  const [showFilters, setShowFilters] = useState(false);
+  const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>('all');
   const [prefixFilter, setPrefixFilter] = useState<string>('all'); // T275: Prefix-based filtering
-  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Asset>>({
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<AssetListRow>>({
     columnAccessor: 'assetNumber',
     direction: 'asc',
   });
+  const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
   
   // T214: Pagination for large asset lists (performance optimization)
-  const PAGE_SIZE = 50; // Show 50 rows per page for optimal performance
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_ASSET_PAGE_SIZE;
+    }
+    const stored = window.localStorage.getItem(ASSET_PAGE_SIZE_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    return ASSET_PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : DEFAULT_ASSET_PAGE_SIZE;
+  });
   const [page, setPage] = useState(1);
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(ASSET_PAGE_SIZE_STORAGE_KEY, String(pageSize));
+  }, [pageSize]);
+
+  const filtersPanelOpen = filtersOpen ?? internalFiltersOpen;
+  const toggleFilters = () => {
+    if (onToggleFilters) {
+      onToggleFilters();
+      return;
+    }
+    setInternalFiltersOpen((prev) => !prev);
+  };
+
+  const initialFiltersSnapshot = useMemo(
+    () => JSON.stringify(initialFilters ?? {}),
+    [initialFilters],
+  );
+
+  useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+      setFilters({
+        ...initialFilters,
+        customFields: initialFilters.customFields
+          ? { ...initialFilters.customFields }
+          : undefined,
+      });
+    } else {
+      setFilters({});
+    }
+  }, [initialFiltersSnapshot, initialFilters]);
+
 
   const { data: categories = [] } = useCategories();
   const { data: prefixes = [] } = useAssetPrefixes(); // T275: Load prefixes for filtering
@@ -88,6 +141,33 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
   const addUndoAction = useUndoStore((state) => state.addAction);
   const getUndoAction = useUndoStore((state) => state.getAction);
   const removeUndoAction = useUndoStore((state) => state.removeAction);
+
+  useEffect(() => {
+    setExpandedParents((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+
+      assets
+        .filter((asset) => asset.isParent && (asset.childAssetIds?.length ?? 0) > 0)
+        .forEach((asset) => {
+          const existing = prev[asset.id];
+          next[asset.id] = existing ?? true;
+          if (existing === undefined) {
+            changed = true;
+          }
+        });
+
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true;
+      }
+
+      if (!changed) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [assets]);
 
   // T263 - E4: Handle row click for direct navigation
   const handleRowClick = (params: { record: Asset; index: number; event: React.MouseEvent }) => {
@@ -155,12 +235,69 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
     });
   }, [filteredAssets, sortStatus]);
 
-  // T214: Pagination for performance (only render current page)
-  const paginatedAssets = useMemo(() => {
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE;
-    return sortedAssets.slice(from, to);
-  }, [sortedAssets, page, PAGE_SIZE]);
+  const visibleChildrenMap = useMemo(() => {
+    const map: Record<string, Asset[]> = {};
+    for (const asset of sortedAssets) {
+      const parentId = asset.parentAssetId;
+      if (!parentId) continue;
+      if (!map[parentId]) {
+        map[parentId] = [];
+      }
+      map[parentId].push(asset);
+    }
+    return map;
+  }, [sortedAssets]);
+
+  const assetIdSet = useMemo(() => new Set(sortedAssets.map(asset => asset.id)), [sortedAssets]);
+
+  const topLevelAssets = useMemo(() => {
+    return sortedAssets.filter(asset => {
+      if (!asset.parentAssetId) return true;
+      return !assetIdSet.has(asset.parentAssetId);
+    });
+  }, [sortedAssets, assetIdSet]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(topLevelAssets.length / pageSize));
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [page, topLevelAssets.length, pageSize]);
+
+  const paginatedTopLevelAssets = useMemo(() => {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize;
+    return topLevelAssets.slice(from, to);
+  }, [topLevelAssets, page, pageSize]);
+
+  const displayRecords = useMemo<AssetListRow[]>(() => {
+    const rows: AssetListRow[] = [];
+
+    const appendAsset = (asset: Asset, depth: number) => {
+      const children = visibleChildrenMap[asset.id] ?? [];
+      const hasVisibleChildren = children.length > 0;
+      const isExpanded = hasVisibleChildren ? (expandedParents[asset.id] ?? true) : undefined;
+
+      rows.push({
+        ...asset,
+        __depth: depth,
+        __parentId: asset.parentAssetId,
+        __hasVisibleChildren: hasVisibleChildren,
+        __isExpanded: isExpanded,
+      });
+
+      if (hasVisibleChildren && isExpanded) {
+        children.forEach(child => appendAsset(child, depth + 1));
+      }
+    };
+
+    paginatedTopLevelAssets.forEach(asset => {
+      const initialDepth = asset.parentAssetId ? 1 : 0;
+      appendAsset(asset, initialDepth);
+    });
+
+    return rows;
+  }, [expandedParents, paginatedTopLevelAssets, visibleChildrenMap]);
 
   const handleDelete = async (asset: Asset) => {
     // T102: Parent deletion validation
@@ -267,26 +404,28 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
       <Group justify="space-between">
         <Title order={2}>Assets</Title>
         <Group>
-          <Button
-            variant={showFilters ? 'filled' : 'default'}
-            leftSection={<IconFilter size={16} />}
-            onClick={() => {
-              setShowFilters(!showFilters);
-            }}
-          >
-            Filters
-            {hasActiveFilters && (
-              <Badge size="xs" circle ml="xs">
-                {[
-                  filters.categoryId, 
-                  filters.status, 
-                  filters.location, 
-                  filters.search,
-                  ...(filters.customFields ? Object.keys(filters.customFields) : [])
-                ].filter(Boolean).length}
-              </Badge>
-            )}
-          </Button>
+          {hideFilterButton !== true && (
+            <Button
+              variant={filtersPanelOpen ? 'filled' : 'default'}
+              leftSection={<IconFilter size={16} />}
+              onClick={toggleFilters}
+            >
+              Filters
+              {hasActiveFilters && (
+                <Badge size="xs" circle ml="xs">
+                  {[
+                    filters.categoryId,
+                    filters.status,
+                    filters.location,
+                    filters.search,
+                    ...(filters.customFields ? Object.keys(filters.customFields) : []),
+                  ]
+                    .filter(Boolean)
+                    .length}
+                </Badge>
+              )}
+            </Button>
+          )}
           {onCreateNew && (
             <Button
               leftSection={<IconPlus size={16} />}
@@ -298,7 +437,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
         </Group>
       </Group>
 
-      {showFilters && (
+      {filtersPanelOpen && (
         <Card withBorder>
           <Stack gap="md">
             <Group align="flex-end">
@@ -371,7 +510,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                 onChange={(val) => {
                   setFilters({ ...filters, status: val ? (val as AssetStatus) : undefined });
                 }}
-                data={STATUS_OPTIONS}
+                data={ASSET_STATUS_OPTIONS}
                 clearable
               />
 
@@ -425,51 +564,88 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
       )}
 
       <Card withBorder>
-        <DataTable
+        <DataTable<AssetListRow>
           withTableBorder
           borderRadius="sm"
           striped
           highlightOnHover
-          records={paginatedAssets} // T214: Only render current page for performance
-          onRowClick={handleRowClick} // T263 - E4: Direct click navigation
-          rowStyle={() => ({ cursor: 'pointer' })} // T264 - E4: Visual feedback
-          // T214: Pagination configuration for large lists
-          totalRecords={sortedAssets.length}
-          recordsPerPage={PAGE_SIZE}
+          records={displayRecords}
+          onRowClick={handleRowClick}
+          rowStyle={() => ({ cursor: 'pointer' })}
+          totalRecords={topLevelAssets.length}
+          recordsPerPage={pageSize}
+          recordsPerPageOptions={ASSET_PAGE_SIZE_OPTIONS}
           page={page}
           onPageChange={setPage}
-          paginationText={({ from, to, totalRecords }) => 
+          onRecordsPerPageChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          paginationText={({ from, to, totalRecords }) =>
             `Showing ${from} to ${to} of ${totalRecords} assets`
           }
           columns={[
             {
-              accessor: 'type',
+              accessor: '__expander',
               title: '',
-              width: 40,
+              width: 90,
               render: (asset) => {
-                if (asset.isParent) {
-                  return (
-                    <Group gap={4}>
-                      <IconLayoutList size={16} color="var(--mantine-color-blue-6)" />
-                      <Badge size="xs" color="blue" circle>
-                        {asset.childAssetIds?.length || 0}
+                const childCount = asset.childAssetIds?.length ?? 0;
+                const isExpanded = asset.__isExpanded ?? false;
+                const isParent = asset.isParent;
+
+                return (
+                  <Group gap="xs">
+                    {asset.__hasVisibleChildren ? (
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        aria-label={isExpanded ? 'Collapse sub assets' : 'Expand sub assets'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedParents((prev) => ({
+                            ...prev,
+                            [asset.id]: !(prev[asset.id] ?? true),
+                          }));
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          style={{
+                            display: 'inline-block',
+                            transform: isExpanded ? 'rotate(90deg)' : 'none',
+                            transition: 'transform 150ms ease',
+                            fontWeight: 600,
+                            fontSize: 14,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {'>'}
+                        </Box>
+                      </ActionIcon>
+                    ) : (
+                      <Box w={28} />
+                    )}
+                    {isParent && (
+                      <Badge size="sm" circle variant="filled" color="blue">
+                        {childCount}
                       </Badge>
-                    </Group>
-                  );
-                }
-                if (asset.parentAssetId) {
-                  return <IconArrowUp size={16} color="var(--mantine-color-gray-6)" />;
-                }
-                return null;
+                    )}
+                  </Group>
+                );
               },
             },
             {
               accessor: 'assetNumber',
               title: 'Asset #',
               sortable: true,
-              width: 120,
+              width: 140,
               render: (asset) => (
-                <Text fw={600} size="sm" pl={asset.parentAssetId ? 'md' : 0}>
+                <Text
+                  fw={600}
+                  size="sm"
+                  style={{ paddingLeft: `${asset.__depth * 16}px` }}
+                >
                   {asset.assetNumber}
                 </Text>
               ),
@@ -479,7 +655,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Name',
               sortable: true,
               render: (asset) => (
-                <Box>
+                <Box style={{ marginLeft: `${asset.__depth * 16}px` }}>
                   <Text fw={500}>{asset.name}</Text>
                   {asset.description && (
                     <Text size="xs" c="dimmed" lineClamp={1}>
@@ -496,9 +672,9 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               render: (asset) => {
                 const icon = asset.category.icon;
                 return (
-                  <Badge 
-                    variant="light" 
-                    color="blue" 
+                  <Badge
+                    variant="light"
+                    color="blue"
                     leftSection={icon ? <IconDisplay iconName={icon} size={14} /> : undefined}
                   >
                     {asset.category.name}
@@ -543,7 +719,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
               title: 'Maintenance',
               width: 120,
               render: (asset) => {
-                const schedule = maintenanceSchedules.find(s => s.assetId === asset.id);
+                const schedule = maintenanceSchedules.find((s) => s.assetId === asset.id);
                 return schedule ? <MaintenanceReminderBadge schedule={schedule} /> : null;
               },
             },
@@ -555,11 +731,11 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                 <Group gap={0} justify="flex-end">
                   <Menu position="bottom-end" shadow="md">
                     <Menu.Target>
-                      <ActionIcon 
-                        variant="subtle" 
+                      <ActionIcon
+                        variant="subtle"
                         color="gray"
                         onClick={(e) => {
-                          e.stopPropagation(); // T265 - E4: Stop event propagation
+                          e.stopPropagation();
                         }}
                       >
                         <IconDots size={16} />
@@ -571,7 +747,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         <Menu.Item
                           leftSection={<IconEye size={14} />}
                           onClick={(e) => {
-                            e.stopPropagation(); // T265 - E4: Stop event propagation
+                            e.stopPropagation();
                             onView(asset);
                           }}
                         >
@@ -582,7 +758,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         <Menu.Item
                           leftSection={<IconEdit size={14} />}
                           onClick={(e) => {
-                            e.stopPropagation(); // T265 - E4: Stop event propagation
+                            e.stopPropagation();
                             onEdit(asset);
                           }}
                         >
@@ -593,7 +769,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
                         color="red"
                         leftSection={<IconTrash size={14} />}
                         onClick={(e) => {
-                          e.stopPropagation(); // T265 - E4: Stop event propagation
+                          e.stopPropagation();
                           void handleDelete(asset);
                         }}
                         disabled={deleteAsset.isPending}
@@ -610,7 +786,7 @@ export function AssetList({ onView, onEdit, onCreateNew, initialFilters }: Asset
           onSortStatusChange={setSortStatus}
           fetching={isLoading}
           minHeight={150}
-          noRecordsText={hasActiveFilters ? "No assets match your filters" : "No assets found"}
+          noRecordsText={hasActiveFilters ? 'No assets match your filters' : 'No assets found'}
         />
       </Card>
     </Stack>

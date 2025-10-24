@@ -21,7 +21,7 @@ interface OptionalEnvVars {
  * Validates that all required environment variables are set
  * @throws {Error} If any required environment variable is missing
  */
-/* eslint-disable max-lines-per-function */
+ 
 export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
   const missing: string[] = [];
   
@@ -55,14 +55,6 @@ export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
     throw new Error(
       `Invalid VITE_BASE_URL: "${VITE_BASE_URL}"\n\n` +
       `VITE_BASE_URL must be a valid URL (e.g., https://your-church.church.tools)`
-    );
-  }
-  
-  // Warn about optional variables
-  if (!import.meta.env.VITE_MODULE_ID) {
-    console.warn(
-      '[Config] VITE_MODULE_ID not set - will fetch from API using VITE_KEY.\n' +
-      'Set VITE_MODULE_ID in .env for faster startup.'
     );
   }
   
