@@ -3,6 +3,7 @@ import type { IStorageProvider } from '../types/storage';
 import { createStorageProvider } from '../services/storage/StorageProviderFactory';
 import { churchToolsAPIClient } from '../services/api/ChurchToolsAPIClient';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
+import { resolveModuleKey } from '../utils/extensionKey';
 
 interface Module {
     id: number;
@@ -13,20 +14,6 @@ interface Module {
 
 // Cache for module ID to avoid repeated API calls
 let cachedModuleId: string | null = null;
-
-export function resolveModuleKey(): string {
-    const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
-    const environment = import.meta.env.VITE_ENVIRONMENT ?? 'development';
-    const isTest = import.meta.env.VITEST === 'true';
-
-    if (isTest) {
-        return `test${baseKey}`;
-    }
-    if (environment === 'production') {
-        return `prod${baseKey}`;
-    }
-    return `dev${baseKey}`;
-}
 
 /**
  * Fetch the custom module ID from ChurchTools by its key and cache it
@@ -128,3 +115,5 @@ export function useStorageProvider(): IStorageProvider | null {
 
     return provider;
 }
+
+export { resolveModuleKey } from '../utils/extensionKey';

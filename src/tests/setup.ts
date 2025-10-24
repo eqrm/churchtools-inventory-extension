@@ -56,7 +56,9 @@ afterEach(() => {
 beforeAll(() => {
     // Mock environment variables for tests
     vi.stubEnv('VITE_ENVIRONMENT', 'test');
-    vi.stubEnv('VITE_KEY', 'test-fkoinventorymanagement');
+    vi.stubEnv('VITE_BASE_KEY', 'fkoinventorymanagement');
+    vi.stubEnv('VITE_DEV_MODE', 'false');
+    vi.stubEnv('VITE_KEY', 'fkoinventorymanagement');
     vi.stubEnv('VITE_CHURCHTOOLS_API', 'https://test.church.tools');
 });
 

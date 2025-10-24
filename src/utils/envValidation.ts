@@ -5,11 +5,12 @@
  * Provides helpful error messages if configuration is incomplete.
  */
 
+import { getBaseKey, getDevModeFlag, getExtensionKey } from './extensionKey';
+
 interface RequiredEnvVars {
   VITE_BASE_URL: string;
   VITE_USERNAME: string;
   VITE_PASSWORD: string;
-  VITE_KEY: string;
 }
 
 interface OptionalEnvVars {
@@ -17,25 +18,29 @@ interface OptionalEnvVars {
   VITE_ENVIRONMENT?: string;
 }
 
+interface DerivedEnvVars {
+  VITE_BASE_KEY: string;
+  VITE_KEY: string;
+  VITE_DEV_MODE: 'true' | 'false';
+}
+
 /**
  * Validates that all required environment variables are set
  * @throws {Error} If any required environment variable is missing
  */
  
-export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
+export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars & DerivedEnvVars {
   const missing: string[] = [];
   
   // Check required variables
   const VITE_BASE_URL = import.meta.env.VITE_BASE_URL;
   const VITE_USERNAME = import.meta.env.VITE_USERNAME;
   const VITE_PASSWORD = import.meta.env.VITE_PASSWORD;
-  const VITE_KEY = import.meta.env.VITE_KEY;
   
   // Collect missing variables
   if (!VITE_BASE_URL) missing.push('VITE_BASE_URL');
   if (!VITE_USERNAME) missing.push('VITE_USERNAME');
   if (!VITE_PASSWORD) missing.push('VITE_PASSWORD');
-  if (!VITE_KEY) missing.push('VITE_KEY');
   
   // Throw if any required variables are missing
   if (missing.length > 0) {
@@ -69,16 +74,38 @@ export function validateEnvironment(): RequiredEnvVars & OptionalEnvVars {
   // Type guard: we've verified these are strings above
   if (typeof VITE_BASE_URL !== 'string' || 
       typeof VITE_USERNAME !== 'string' ||
-      typeof VITE_PASSWORD !== 'string' ||
-      typeof VITE_KEY !== 'string') {
+      typeof VITE_PASSWORD !== 'string') {
     throw new Error('Environment validation failed unexpectedly');
+  }
+
+  const VITE_BASE_KEY = getBaseKey();
+  const VITE_KEY = getExtensionKey();
+  const VITE_DEV_MODE = getDevModeFlag();
+
+  const rawDevMode = (import.meta.env['VITE_DEV_MODE'] ?? '').trim();
+  if (
+    rawDevMode.length > 0 &&
+    !['true', 'false'].includes(rawDevMode.toLowerCase())
+  ) {
+    console.warn(
+      `[Config] Invalid VITE_DEV_MODE: "${rawDevMode}" - using "${VITE_DEV_MODE}".`
+    );
+  }
+
+  const rawBaseKey = (import.meta.env['VITE_BASE_KEY'] ?? '').trim();
+  if (rawBaseKey && rawBaseKey !== VITE_BASE_KEY) {
+    console.warn(
+      `[Config] Sanitized VITE_BASE_KEY from "${rawBaseKey}" to "${VITE_BASE_KEY}".`
+    );
   }
   
   return {
     VITE_BASE_URL,
     VITE_USERNAME,
     VITE_PASSWORD,
+    VITE_BASE_KEY,
     VITE_KEY,
+    VITE_DEV_MODE,
     VITE_MODULE_ID: import.meta.env.VITE_MODULE_ID,
     VITE_ENVIRONMENT: environment,
   };

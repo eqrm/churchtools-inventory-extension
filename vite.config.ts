@@ -3,17 +3,49 @@ import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default ({ mode }: { mode: string }) => {
-    process.env = { ...process.env, ...loadEnv(mode, process.cwd()) };
-    const extensionKey = process.env.VITE_KEY;
+    const env = loadEnv(mode, process.cwd());
+    process.env = { ...process.env, ...env };
 
-    if (!extensionKey) {
-        throw new Error('VITE_KEY environment variable is required to build the extension');
-    }
+    const rawDevMode = (
+        env.VITE_DEV_MODE ??
+        env.dev_mode ??
+        process.env.VITE_DEV_MODE ??
+        process.env.dev_mode ??
+        ''
+    ).toString();
 
-    const basePath = mode === 'production' ? `/ccm/${extensionKey}/` : `/ccm/dev${extensionKey}/`;
+    const rawBaseKey = (
+        env.VITE_BASE_KEY ??
+        env.base_key ??
+        process.env.VITE_BASE_KEY ??
+        process.env.base_key ??
+        'fkoinventorymanagement'
+    ).toString();
+
+    const sanitizedBaseKey = rawBaseKey.trim().replace(/^(dev|prod|test)/i, '') || 'fkoinventorymanagement';
+    const baseKey = sanitizedBaseKey.toLowerCase();
+
+    const isDevMode = rawDevMode.trim().toLowerCase() === 'true';
+    const extensionKey = isDevMode ? `dev${baseKey}` : baseKey;
+    const devBaseKey = baseKey;
+
+    process.env.VITE_BASE_KEY = baseKey;
+    process.env.VITE_KEY = extensionKey;
+    process.env.VITE_DEV_MODE = isDevMode ? 'true' : 'false';
+
+    const basePath = mode === 'production'
+        ? `/ccm/${extensionKey}/`
+        : `/ccm/dev${devBaseKey}/`;
+
+    console.log(`[34m[Inventory] Building with base key: ${baseKey} (${isDevMode ? 'dev' : 'prod'} mode)[0m`);
 
     return defineConfig({
         base: basePath,
+        define: {
+            'import.meta.env.VITE_BASE_KEY': JSON.stringify(baseKey),
+            'import.meta.env.VITE_KEY': JSON.stringify(extensionKey),
+            'import.meta.env.VITE_DEV_MODE': JSON.stringify(isDevMode ? 'true' : 'false'),
+        },
         plugins: [react()],
         build: {
             // Bundle size optimization

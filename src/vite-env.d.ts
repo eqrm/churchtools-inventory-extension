@@ -5,6 +5,7 @@ interface ImportMetaEnv {
     readonly VITE_USERNAME?: string
     readonly VITE_PASSWORD?: string
     readonly VITE_KEY?: string
+    readonly VITE_DEV_MODE?: string
     readonly VITE_MODULE_ID?: string
     readonly VITE_ENVIRONMENT?: string
     readonly MODE: string

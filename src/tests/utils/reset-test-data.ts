@@ -9,6 +9,7 @@
  */
 
 import { churchtoolsClient } from '@churchtools/churchtools-client';
+import { getSanitizedBaseKey } from '../../utils/extensionKey';
 
 /**
  * Error thrown when attempting destructive operations outside of test mode
@@ -35,7 +36,7 @@ function ensureTestMode(): void {
   }
 
   // Double check the module key has 'test' prefix
-  const moduleKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const moduleKey = getSanitizedBaseKey();
   const expectedPrefix = 'test';
   const actualKey = `${expectedPrefix}${moduleKey}`;
 
@@ -67,7 +68,7 @@ interface Module {
 export async function resetCustomModuleData(): Promise<void> {
   ensureTestMode();
 
-  const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const baseKey = getSanitizedBaseKey();
   const moduleKey = `test${baseKey}`;
 
   try {
@@ -113,7 +114,7 @@ export async function resetCustomModuleData(): Promise<void> {
 export async function resetCategories(): Promise<void> {
   ensureTestMode();
 
-  const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const baseKey = getSanitizedBaseKey();
   const moduleKey = `test${baseKey}`;
 
   try {
@@ -148,7 +149,7 @@ export async function resetCategories(): Promise<void> {
 export async function resetAssets(): Promise<void> {
   ensureTestMode();
 
-  const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const baseKey = getSanitizedBaseKey();
   const moduleKey = `test${baseKey}`;
 
   try {
@@ -184,7 +185,7 @@ export async function resetAssets(): Promise<void> {
 export async function resetBookings(): Promise<void> {
   ensureTestMode();
 
-  const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const baseKey = getSanitizedBaseKey();
   const moduleKey = `test${baseKey}`;
 
   try {
@@ -310,7 +311,7 @@ function createTestCategories() {
 export async function seedTestData(): Promise<void> {
   ensureTestMode();
 
-  const baseKey = import.meta.env.VITE_KEY ?? 'fkoinventorymanagement';
+  const baseKey = getSanitizedBaseKey();
   const moduleKey = `test${baseKey}`;
 
   try {
