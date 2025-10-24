@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { IStorageProvider } from '../types/storage';
-import { createStorageProvider } from '../services/storage/StorageProviderFactory';
 import { churchToolsAPIClient } from '../services/api/ChurchToolsAPIClient';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
 import { resolveModuleKey } from '../utils/extensionKey';
+import { initializeChurchToolsStorageProvider } from '../services/churchTools/storageProvider';
 
 interface Module {
     id: number;
@@ -22,15 +22,24 @@ export async function getModuleId(moduleKey: string): Promise<string> {
     // Check in-memory cache first
     if (cachedModuleId) return cachedModuleId;
 
+    const normalizedKey = moduleKey.trim().toLowerCase();
+
     // Check localStorage cache (persist across page reloads)
     try {
-        const stored = localStorage.getItem(`ct_module_${moduleKey}`);
+        const stored = localStorage.getItem(`ct_module_${normalizedKey}`);
         if (stored) {
             cachedModuleId = stored;
             return cachedModuleId;
         }
     } catch {
         // Ignore localStorage failures
+    }
+
+    // Prefer explicit module id from environment before making network requests
+    const envModuleId = (import.meta.env['VITE_MODULE_ID'] ?? '').trim();
+    if (envModuleId) {
+        cachedModuleId = envModuleId;
+        return cachedModuleId;
     }
 
     try {
@@ -41,7 +50,7 @@ export async function getModuleId(moduleKey: string): Promise<string> {
 
         // Persist to localStorage for faster subsequent loads
         try {
-            localStorage.setItem(`ct_module_${moduleKey}`, cachedModuleId);
+            localStorage.setItem(`ct_module_${normalizedKey}`, cachedModuleId);
         } catch {
             // ignore storage errors
         }
@@ -49,12 +58,6 @@ export async function getModuleId(moduleKey: string): Promise<string> {
         return cachedModuleId;
     } catch (apiError) {
         // If API call fails, try environment variable
-        const envModuleId = import.meta.env['VITE_MODULE_ID'];
-        if (envModuleId) {
-            cachedModuleId = envModuleId;
-            return cachedModuleId;
-        }
-        
         console.error('Could not fetch module via API and no cached module id or env var available:', apiError);
         throw new Error(
             'Unable to initialize storage: Custom module not found. ' +
@@ -85,13 +88,11 @@ export function useStorageProvider(): IStorageProvider | null {
 
                 const moduleId = await getModuleId(moduleKey);
 
-                const storageProvider = createStorageProvider({
-                    type: 'churchtools',
-                    churchtools: {
-                        moduleId,
-                        baseUrl,
-                        apiClient: churchToolsAPIClient,
-                    },
+                const storageProvider = initializeChurchToolsStorageProvider({
+                    moduleId,
+                    baseUrl,
+                    apiClient: churchToolsAPIClient,
+                    debugLabel: 'hook:useStorageProvider',
                 });
 
                 setProvider(storageProvider);

@@ -36,15 +36,9 @@ function getEnvValue(key) {
     return process.env[key] ?? cachedEnv[key];
 }
 
-function computeBaseKey() {
-    const raw = getEnvValue('VITE_BASE_KEY') ?? 'fkoinventorymanagement';
-    const sanitized = raw.trim().replace(/^(dev|prod|test)/i, '') || 'fkoinventorymanagement';
-    return sanitized.toLowerCase();
-}
-
-function isDevMode() {
-    const flag = (getEnvValue('VITE_DEV_MODE') ?? '').trim().toLowerCase();
-    return flag === 'true';
+function getModuleKey() {
+    const raw = getEnvValue('VITE_KEY') ?? 'fkoinventorymanagement';
+    return raw.trim().toLowerCase();
 }
 
 // Read package.json for project info
@@ -76,10 +70,8 @@ console.log(`   Project: ${projectName}`);
 console.log(`   Version: ${version}`);
 console.log(`   Git Hash: ${gitHash}`);
 console.log(`   Archive: ${archiveName}`);
-const baseKey = computeBaseKey();
-const devMode = isDevMode();
-const effectiveKey = devMode ? `dev${baseKey}` : baseKey;
-console.log(`   Target Module Key: ${effectiveKey} (base: ${baseKey}, dev mode: ${devMode ? 'true' : 'false'})`);
+const moduleKey = getModuleKey();
+console.log(`   Target Module Key: ${moduleKey}`);
 
 // Check if dist directory exists
 const distDir = path.join(rootDir, 'dist');

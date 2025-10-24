@@ -21,9 +21,9 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 
 **Purpose**: Ensure environment configuration and tooling align with the implementation plan before feature work begins.
 
-- [ ] T001 Update `.env.example` with `VITE_KEY` / `VITE_BASE_URL` guidance and onboarding notes (`/.env.example`)
-- [ ] T002 Add bundle analysis script using `vite-bundle-visualizer` to `package.json` and document usage in `README.md` (`/package.json`, `/README.md`)
-- [ ] T003 [P] Create Vitest configuration enabling React Testing Library and coverage thresholds (`/vitest.config.ts`)
+- [X] T001 Update `.env.example` with `VITE_KEY` / `VITE_BASE_URL` guidance and onboarding notes (`/.env.example`)
+- [X] T002 Add bundle analysis script using `vite-bundle-visualizer` to `package.json` and document usage in `README.md` (`/package.json`, `/README.md`)
+- [X] T003 [P] Create Vitest configuration enabling React Testing Library and coverage thresholds (`/vitest.config.ts`)
 
 ---
 
@@ -31,12 +31,12 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 
 **Purpose**: Core infrastructure shared across all user stories.
 
-- [ ] T004 Memoize ChurchTools storage provider and export singleton utilities (`/src/services/churchTools/storageProvider.ts`)
-- [ ] T005 [P] Define shared history event types and adapters for TanStack Query (`/src/utils/history/types.ts`, `/src/hooks/useHistoryEvents.ts`)
-- [ ] T006 Initialize Dexie schema extensions for demo metadata and history caching (`/src/state/offline/db.ts`)
-- [ ] T007 Establish lazy-loaded route bundles for maintenance dashboard modules to protect bundle budget (`/src/pages/MaintenanceDashboard.tsx`, `/src/router/index.ts`)
-- [ ] T008 Add instrumentation to confirm single storage provider initialization and document metrics hook (`/src/utils/metrics/storageProviderInstrumentation.ts`)
-- [ ] T009 [P] Update ESLint/Vitest integration to cover new folders (`/.eslintrc.cjs`, `/package.json`)
+- [X] T004 Memoize ChurchTools storage provider and export singleton utilities (`/src/services/churchTools/storageProvider.ts`)
+- [X] T005 [P] Define shared history event types and adapters for TanStack Query (`/src/utils/history/types.ts`, `/src/hooks/useHistoryEvents.ts`)
+- [X] T006 Initialize Dexie schema extensions for demo metadata and history caching (`/src/state/offline/db.ts`)
+- [X] T007 Establish lazy-loaded route bundles for maintenance dashboard modules to protect bundle budget (`/src/pages/MaintenanceDashboard.tsx`, `/src/router/index.ts`)
+- [X] T008 Add instrumentation to confirm single storage provider initialization and document metrics hook (`/src/utils/metrics/storageProviderInstrumentation.ts`)
+- [X] T009 [P] Update ESLint/Vitest integration to cover new folders (`/.eslintrc.cjs`, `/package.json`)
 
 **Constitution Compliance Gates**
 - Confirm TypeScript strict mode remains enabled in `/tsconfig.json`

@@ -76,6 +76,16 @@ To preview the production build locally:
 npm run preview
 ```
 
+### Bundle Analysis
+
+Generate an interactive visualization of the production bundle to ensure we stay under the 200 KB gzip budget:
+
+```bash
+npm run analyze:bundle
+```
+
+The report is written to `dist/bundle-analysis.html` and opens in your browser automatically. Run this after significant dependency changes to track bundle growth over time.
+
 ### Deployment
 
 To build and package your extension for deployment:

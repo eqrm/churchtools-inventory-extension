@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-ssr/
+build/
+coverage/
+.vite/
+releases/
+.DS_Store
+.env
+*.log
