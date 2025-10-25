@@ -15,7 +15,7 @@ import { useBookings } from '../../hooks/useBookings'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { ListLoadingSkeleton } from '../common/ListLoadingSkeleton'
 import { EmptyState } from '../common/EmptyState'
-import { PersonDisplay } from '../common/PersonDisplay'
+import { PersonAvatar } from '../common/PersonAvatar'
 import type { Booking, BookingStatus, BookingFilters } from '../../types/entities'
 import { bookingStrings } from '../../i18n/bookingStrings'
 
@@ -74,27 +74,33 @@ function getTableColumns(): DataTableColumn<Booking>[] {
       render: (b) => new Date(b.endDate).toLocaleDateString('en-US'),
     },
     { accessor: 'purpose', title: 'Purpose' },
-    { 
-      accessor: 'bookedByName', 
-      title: 'Booked By', 
+    {
+      accessor: 'bookedByName',
+      title: 'Booked By',
       sortable: true,
-      render: (b) => <PersonDisplay 
-        personId={b.bookedById} 
-        personName={b.bookedByName || b.requestedByName} 
-        size="xs" 
-        textSize="sm" 
-      />
+      render: (b) => (
+        <PersonAvatar
+          personId={b.bookedById}
+          name={b.bookedByName || b.requestedByName}
+          size="xs"
+          textSize="sm"
+          maxWidth={160}
+        />
+      ),
     },
-    { 
-      accessor: 'bookingForName', 
-      title: 'Booked For', 
+    {
+      accessor: 'bookingForName',
+      title: 'Booked For',
       sortable: true,
-      render: (b) => <PersonDisplay 
-        personId={b.bookingForId} 
-        personName={b.bookingForName || b.requestedByName} 
-        size="xs" 
-        textSize="sm" 
-      />
+      render: (b) => (
+        <PersonAvatar
+          personId={b.bookingForId}
+          name={b.bookingForName || b.requestedByName}
+          size="xs"
+          textSize="sm"
+          maxWidth={160}
+        />
+      ),
     },
     {
       accessor: 'status',

@@ -39,6 +39,8 @@ export interface PersonCacheRecord {
     avatarUrl?: string;
     lastUsed: ISOTimestamp;
     searchText: string;
+    defaultPrefixId?: string | null;
+    defaultPrefixUpdatedAt?: ISOTimestamp;
 }
 
 export interface DemoMetadataRecord {
@@ -47,6 +49,7 @@ export interface DemoMetadataRecord {
     seedVersion: string | null;
     seededBy?: string | null;
     lastResetAt?: ISOTimestamp | null;
+    modalDismissedAt?: ISOTimestamp | null;
 }
 
 export interface DemoEntityRecord {
@@ -174,6 +177,7 @@ export async function loadDemoMetadata(): Promise<DemoMetadataRecord> {
         seedVersion: null,
         seededBy: null,
         lastResetAt: null,
+        modalDismissedAt: null,
     };
 
     await offlineDb.demoMetadata.put(defaultRecord);

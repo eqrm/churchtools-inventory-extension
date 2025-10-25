@@ -63,7 +63,7 @@ export class ChurchToolsAPIClient {
      */
     async deleteRequest(endpoint: string): Promise<void> {
         try {
-            await churchtoolsClient.post(endpoint, { _method: 'DELETE' });
+            await churchtoolsClient.deleteApi(endpoint, undefined, { needsAuthentication: true });
         } catch (error) {
             throw this.handleError(error);
         }

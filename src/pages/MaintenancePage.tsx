@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Container, Stack, Title, Text, Tabs, Button, Modal, Select, Group } from '@mantine/core';
-import { IconCalendarCheck, IconClipboardList, IconGauge, IconPlus } from '@tabler/icons-react';
+import { IconCalendarCheck, IconClipboardList, IconGauge, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { MaintenanceDashboard } from '../components/maintenance/MaintenanceDashboard';
 import { MaintenanceScheduleList } from '../components/maintenance/MaintenanceScheduleList';
 import { MaintenanceRecordsSection } from '../components/maintenance/MaintenanceRecordsSection';
 import { MaintenanceScheduleForm } from '../components/maintenance/MaintenanceScheduleForm';
 import { MaintenanceRecordForm } from '../components/maintenance/MaintenanceRecordForm';
+import { MaintenancePlanForm } from '../components/maintenance/MaintenancePlanForm';
+import { MaintenanceCompletionTable } from '../components/maintenance/MaintenanceCompletionTable';
 import { useAssets } from '../hooks/useAssets';
 import { formatScheduleDescription } from '../utils/maintenanceCalculations';
 import type { Asset, MaintenanceSchedule } from '../types/entities';
+import { useMaintenancePlanStore } from '../state/maintenance/planStore';
 
 /**
  * Maintenance Page - Central hub for maintenance management
@@ -26,6 +29,7 @@ export function MaintenancePage() {
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
   const [scheduleContext, setScheduleContext] = useState<MaintenanceSchedule | null>(null);
+  const resetPlan = useMaintenancePlanStore((store) => store.resetPlan);
 
   const assetOptions = useMemo(
     () => assets.map((asset) => ({ value: asset.id, label: `${asset.assetNumber} · ${asset.name}` })),
@@ -82,6 +86,9 @@ export function MaintenancePage() {
             <Tabs.Tab value="dashboard" leftSection={<IconGauge size={16} />}>
               Übersicht
             </Tabs.Tab>
+            <Tabs.Tab value="plans" leftSection={<IconClipboardList size={16} />}>
+              Plans
+            </Tabs.Tab>
             <Tabs.Tab value="schedules" leftSection={<IconCalendarCheck size={16} />}>
               Wartungspläne
             </Tabs.Tab>
@@ -101,6 +108,25 @@ export function MaintenancePage() {
                   Wartung erfassen
                 </Button>
               </Group>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="plans" pt="md">
+            <Stack gap="lg">
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={4}>
+                  <Title order={3}>Maintenance plans</Title>
+                  <Text size="sm" c="dimmed">
+                    Draft a plan, schedule maintenance windows, and track completion per asset.
+                  </Text>
+                </Stack>
+                <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={resetPlan}>
+                  Reset draft
+                </Button>
+              </Group>
+
+              <MaintenancePlanForm />
+              <MaintenanceCompletionTable />
             </Stack>
           </Tabs.Panel>
 

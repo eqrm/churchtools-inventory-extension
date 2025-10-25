@@ -21,6 +21,13 @@ import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 import { useCategories, useCategory } from '../../hooks/useCategories';
 import { useCreateAsset, useCreateMultiAsset, useUpdateAsset } from '../../hooks/useAssets';
 import { useAssetPrefixes } from '../../hooks/useAssetPrefixes';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
+import {
+  getStoredModuleDefaultPrefixId,
+  getStoredPersonDefaultPrefixId,
+  resolvePrefixForAutoNumbering,
+  setStoredPersonDefaultPrefixId,
+} from '../../services/assets/autoNumbering';
 import { useMasterData } from '../../hooks/useMasterDataNames';
 import { generateAssetNameFromTemplate, DEFAULT_ASSET_NAME_TEMPLATE } from '../../utils/assetNameTemplate';
 import { MASTER_DATA_DEFINITIONS, normalizeMasterDataName } from '../../utils/masterData';
@@ -66,6 +73,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
   const createAsset = useCreateAsset();
   const createMultiAsset = useCreateMultiAsset();
   const updateAsset = useUpdateAsset();
+  const { data: currentUser } = useCurrentUser();
 
 
   const form = useForm<AssetFormValues>({
@@ -75,7 +83,7 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       model: asset?.model || '',
       description: asset?.description || '',
       categoryId: asset?.category.id || '',
-  prefixId: '', // Default to first prefix or empty
+      prefixId: '', // Default to first prefix or empty
       status: asset?.status || 'available',
       location: asset?.location || '',
       parentAssetId: asset?.parentAssetId || '',
@@ -100,6 +108,73 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
       categoryId: (value) => (!value ? 'Category is required' : null),
     },
   });
+
+  const currentUserId = currentUser?.id ?? null;
+  const selectedPrefixId = form.values.prefixId;
+
+  const prefixOptions = useMemo(
+    () =>
+      prefixes.map(prefix => ({
+        value: prefix.id,
+        label: prefix.description ? `${prefix.prefix} - ${prefix.description}` : prefix.prefix,
+      })),
+    [prefixes]
+  );
+
+  const selectedPrefix = useMemo(
+    () => prefixes.find(prefix => prefix.id === selectedPrefixId) ?? null,
+    [prefixes, selectedPrefixId]
+  );
+
+  const prefixDescription = selectedPrefix
+    ? (
+        <Group gap="xs">
+          <Text size="xs" c="dimmed">
+            Next asset number:
+          </Text>
+          <Badge color={selectedPrefix.color} size="sm">
+            {`${selectedPrefix.prefix}-${String(selectedPrefix.sequence + 1).padStart(3, '0')}`}
+          </Badge>
+        </Group>
+      )
+    : 'Choose a prefix for this asset\'s numbering sequence';
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    if (selectedPrefixId) {
+      return;
+    }
+
+    if (prefixes.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const applyStoredDefaults = async () => {
+      const moduleDefault = getStoredModuleDefaultPrefixId();
+      const personDefault = currentUserId ? await getStoredPersonDefaultPrefixId(currentUserId) : null;
+
+      const resolution = resolvePrefixForAutoNumbering({
+        prefixes,
+        personDefaultPrefixId: personDefault,
+        moduleDefaultPrefixId: moduleDefault,
+      });
+
+      if (!cancelled && resolution.prefixId) {
+        form.setFieldValue('prefixId', resolution.prefixId);
+      }
+    };
+
+    void applyStoredDefaults();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, prefixes, selectedPrefixId, currentUserId, form]);
 
   // Track whether the user has manually edited the name field. If not, we auto-fill
   // the name with a generated value based on other fields so the user sees a preview.
@@ -362,31 +437,17 @@ export function AssetForm({ asset, onSuccess, onCancel }: AssetFormProps) {
                 <Select
                   label="Asset Prefix"
                   placeholder="Select prefix"
-                  description={
-                    form.values.prefixId
-                      ? (() => {
-                          const selectedPrefix = prefixes.find(p => p.id === form.values.prefixId);
-                          if (selectedPrefix) {
-                            const nextNumber = String(selectedPrefix.sequence + 1).padStart(3, '0');
-                            return (
-                              <Group gap="xs">
-                                <Text size="xs" c="dimmed">Next asset number:</Text>
-                                <Badge color={selectedPrefix.color} size="sm">
-                                  {selectedPrefix.prefix}-{nextNumber}
-                                </Badge>
-                              </Group>
-                            );
-                          }
-                          return null;
-                        })()
-                      : 'Choose a prefix for this asset\'s numbering sequence'
-                  }
+                  description={prefixDescription}
                   descriptionProps={{ component: 'div' }}
-                  data={prefixes.map(prefix => ({
-                    value: prefix.id,
-                    label: `${prefix.prefix} - ${prefix.description}`,
-                  }))}
-                  {...form.getInputProps('prefixId')}
+                  data={prefixOptions}
+                  value={form.values.prefixId || null}
+                  clearable
+                  onChange={(value) => {
+                    form.setFieldValue('prefixId', value ?? '');
+                    if (currentUser) {
+                      void setStoredPersonDefaultPrefixId(currentUser, value ?? null);
+                    }
+                  }}
                 />
               </Grid.Col>
             )}

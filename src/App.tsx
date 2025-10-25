@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Center, Loader, Stack, Text } from '@mantine/core';
 import { Navigation } from './components/layout/Navigation';
 import { QuickScanModal } from './components/scanner/QuickScanModal';
+import { DemoDataModal } from './components/onboarding/DemoDataModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { appRoutes } from './router';
 
@@ -77,6 +78,7 @@ function App() {
             setScanModalOpened(false);
           }}
         />
+
       </BrowserRouter>
     </ErrorBoundary>
   );

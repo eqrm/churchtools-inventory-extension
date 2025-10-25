@@ -56,16 +56,16 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 **Independent Test**: Open any booking, toggle Overview ↔ History, verify lifecycle entries append in-place when actions occur, default assignee is creator, and quantity validation blocks over-allocation.
 
 ### Tests for User Story 1
-- [ ] T010 [P] [US1] Write unit tests for booking quantity allocator edge cases (`/tests/unit/bookings/quantityAllocator.test.ts`)
-- [ ] T011 [P] [US1] Add component test ensuring `<HistoryTimeline>` renders grouped events (`/tests/unit/components/HistoryTimeline.test.tsx`)
+- [x] T010 [P] [US1] Write unit tests for booking quantity allocator edge cases (`/tests/unit/bookings/quantityAllocator.test.ts`)
+- [x] T011 [P] [US1] Add component test ensuring `<HistoryTimeline>` renders grouped events (`/tests/unit/components/HistoryTimeline.test.tsx`)
 
 ### Implementation for User Story 1
-- [ ] T012 [P] [US1] Implement reusable `<HistoryTimeline>` component with Mantine Timeline styles (`/src/components/common/HistoryTimeline.tsx`)
-- [ ] T013 [US1] Integrate Overview/History tabs into booking detail screen (`/src/components/bookings/BookingDetailsTabs.tsx`)
-- [ ] T014 [US1] Add quantity selector with availability checks to booking form (`/src/components/bookings/BookingForm.tsx`)
-- [ ] T015 [US1] Implement quantity allocation helper leveraging cached assets (`/src/services/bookings/quantityAllocator.ts`)
-- [ ] T016 [US1] Append lifecycle events in booking mutations and sync TanStack Query cache (`/src/services/bookings/bookingMutations.ts`)
-- [ ] T017 [US1] Surface shortages and success toast messaging via Mantine notifications (`/src/components/bookings/BookingForm.tsx`)
+- [x] T012 [P] [US1] Implement reusable `<HistoryTimeline>` component with Mantine Timeline styles (`/src/components/common/HistoryTimeline.tsx`)
+- [x] T013 [US1] Integrate Overview/History tabs into booking detail screen (`/src/components/bookings/BookingDetailsTabs.tsx`)
+- [x] T014 [US1] Add quantity selector with availability checks to booking form (`/src/components/bookings/BookingForm.tsx`)
+- [x] T015 [US1] Implement quantity allocation helper leveraging cached assets (`/src/services/bookings/quantityAllocator.ts`)
+- [x] T016 [US1] Append lifecycle events in booking mutations and sync TanStack Query cache (`/src/services/bookings/bookingMutations.ts`)
+- [x] T017 [US1] Surface shortages and success toast messaging via Mantine notifications (`/src/components/bookings/BookingForm.tsx`)
 
 **Checkpoint**: Booking lifecycle trace functional and independently testable.
 
@@ -78,15 +78,15 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 **Independent Test**: Create a plan, move Draft → Planned → Completed, confirm calendar holds appear with maintenance color, and partial completion releases only selected assets while history updates.
 
 ### Tests for User Story 2
-- [ ] T018 [P] [US2] Cover maintenance stage reducer transitions and partial completion logic (`/tests/unit/maintenance/planReducer.test.ts`)
+- [x] T018 [P] [US2] Cover maintenance stage reducer transitions and partial completion logic (`/tests/unit/maintenance/planReducer.test.ts`)
 
 ### Implementation for User Story 2
-- [ ] T019 [P] [US2] Create maintenance plan store with stage state machine (`/src/state/maintenance/planStore.ts`)
-- [ ] T020 [US2] Build maintenance plan form with asset/company multiselect and scheduling fields (`/src/components/maintenance/MaintenancePlanForm.tsx`)
-- [ ] T021 [US2] Implement per-asset completion table with shared timeline updates (`/src/components/maintenance/MaintenanceCompletionTable.tsx`)
-- [ ] T022 [US2] Publish maintenance calendar holds via ChurchTools API integration (`/src/services/maintenance/maintenanceCalendar.ts`)
-- [ ] T023 [US2] Embed maintenance history tab on asset detail using `<HistoryTimeline>` (`/src/components/assets/AssetMaintenanceHistory.tsx`)
-- [ ] T024 [US2] Add disabled file upload control with future capability hint (`/src/components/maintenance/MaintenanceCompletionDrawer.tsx`)
+- [x] T019 [P] [US2] Create maintenance plan store with stage state machine (`/src/state/maintenance/planStore.ts`)
+- [x] T020 [US2] Build maintenance plan form with asset/company multiselect and scheduling fields (`/src/components/maintenance/MaintenancePlanForm.tsx`)
+- [x] T021 [US2] Implement per-asset completion table with shared timeline updates (`/src/components/maintenance/MaintenanceCompletionTable.tsx`)
+- [x] T022 [US2] Publish maintenance calendar holds via ChurchTools API integration (`/src/services/maintenance/maintenanceCalendar.ts`)
+- [x] T023 [US2] Embed maintenance history tab on asset detail using `<HistoryTimeline>` (`/src/components/assets/AssetMaintenanceHistory.tsx`)
+- [x] T024 [US2] Add disabled file upload control with future capability hint (`/src/components/maintenance/MaintenanceCompletionDrawer.tsx`)
 
 **Checkpoint**: Maintenance orchestration independently verifiable.
 
@@ -99,13 +99,13 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 **Independent Test**: Remove prefixes, observe dashboard warning, set default prefix, create category and confirm auto-number respects prefix for current user.
 
 ### Tests for User Story 3
-- [ ] T025 [P] [US3] Validate auto-numbering helper respects prefix fallback hierarchy (`/tests/unit/assets/autoNumbering.test.ts`)
+- [x] T025 [P] [US3] Validate auto-numbering helper respects prefix fallback hierarchy (`/tests/unit/assets/autoNumbering.test.ts`)
 
 ### Implementation for User Story 3
-- [ ] T026 [US3] Create dashboard prefix warning card with settings navigation (`/src/components/dashboard/PrefixWarningCard.tsx`)
-- [ ] T027 [US3] Enhance prefix settings panel for default selection and persistence (`/src/components/settings/PrefixSettingsPanel.tsx`)
-- [ ] T028 [US3] Update auto-number service to read/write person cache (`/src/services/assets/autoNumbering.ts`)
-- [ ] T029 [US3] Adjust category creation workflow to consume default prefix (`/src/components/assets/CategoryForm.tsx`)
+- [x] T026 [US3] Create dashboard prefix info card with settings navigation (`/src/components/dashboard/PrefixWarningCard.tsx`)
+- [x] T027 [US3] Enhance prefix settings panel for default selection and persistence (`/src/components/settings/PrefixSettingsPanel.tsx`)
+- [x] T028 [US3] Update auto-number service to read/write person cache (`/src/services/assets/autoNumbering.ts`)
+- [x] T029 [US3] Adjust category creation workflow to consume default prefix (`/src/components/assets/CategoryForm.tsx`)
 
 **Checkpoint**: Numbering transparency complete and testable.
 
@@ -118,14 +118,14 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 **Independent Test**: Trigger first-run modal, accept seeding, review sample data, then purge demo data via developer settings without touching real entries.
 
 ### Tests for User Story 4
-- [ ] T030 [P] [US4] Unit test demo seeder tagging and cleanup routines (`/tests/unit/demo/demoSeeder.test.ts`)
+- [x] T030 [P] [US4] Unit test demo seeder tagging and cleanup routines (`/tests/unit/demo/demoSeeder.test.ts`)
 
 ### Implementation for User Story 4
-- [ ] T031 [US4] Implement first-run modal with accept/decline handling (`/src/components/onboarding/DemoDataModal.tsx`)
-- [ ] T032 [US4] Build deterministic seeding routine with tagged entities (`/src/services/demo/demoSeeder.ts`)
-- [ ] T033 [US4] Track demo metadata in Dexie and expose helpers (`/src/state/offline/demoMetadataStore.ts`)
-- [ ] T034 [US4] Add developer settings controls for reset/reseed with confirmation prompts (`/src/components/settings/DeveloperToolsCard.tsx`)
-- [ ] T035 [US4] Guard seeding/reset flows behind dev-mode checks (`/src/utils/environment/flags.ts`)
+- [x] T031 [US4] Implement first-run modal with accept/decline handling (`/src/components/onboarding/DemoDataModal.tsx`)
+- [x] T032 [US4] Build deterministic seeding routine with tagged entities (`/src/services/demo/demoSeeder.ts`)
+- [x] T033 [US4] Track demo metadata in Dexie and expose helpers (`/src/state/offline/demoMetadataStore.ts`)
+- [x] T034 [US4] Add developer settings controls for reset/reseed with confirmation prompts (`/src/components/settings/DeveloperToolsCard.tsx`)
+- [x] T035 [US4] Guard seeding/reset flows behind dev-mode checks (`/src/utils/environment/flags.ts`)
 
 **Checkpoint**: Demo onboarding independently verifiable.
 
@@ -138,13 +138,13 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 **Independent Test**: Inspect booking, asset, and maintenance lists for consistent avatar rendering without extra API calls; confirm implementation notes, README, and German forum post updated.
 
 ### Implementation for User Story 5
-- [ ] T036 [US5] Create shared avatar component utilizing cache or initials (`/src/components/common/PersonAvatar.tsx`)
-- [ ] T037 [US5] Replace booking people badges with `PersonAvatar` (`/src/components/bookings/BookingParticipants.tsx`)
-- [ ] T038 [US5] Replace asset assignment avatars with `PersonAvatar` (`/src/components/assets/AssetAssignmentList.tsx`)
-- [ ] T039 [US5] Update maintenance staff listings to use `PersonAvatar` (`/src/components/maintenance/MaintenanceTeamList.tsx`)
-- [ ] T040 [US5] Consolidate implementation notes and decisions (`/docs/implementation-notes.md`)
-- [ ] T041 [US5] Refresh `README.md` with new features and usage guidance (`/README.md`)
-- [ ] T042 [US5] Draft German community forum post summarizing whole extension, write about usage of spec-kit, future plans granular permissions, files images etc (`/docs/forum-post-de.md`)
+- [x] T036 [US5] Create shared avatar component utilizing cache or initials (`/src/components/common/PersonAvatar.tsx`)
+- [x] T037 [US5] Replace booking people badges with `PersonAvatar` (`/src/components/bookings/BookingParticipants.tsx`)
+- [x] T038 [US5] Replace asset assignment avatars with `PersonAvatar` (`/src/components/assets/AssetAssignmentList.tsx`)
+- [x] T039 [US5] Update maintenance staff listings to use `PersonAvatar` (`/src/components/maintenance/MaintenanceTeamList.tsx`)
+- [x] T040 [US5] Consolidate implementation notes and decisions (`/docs/implementation-notes.md`)
+- [x] T041 [US5] Refresh `README.md` with new features and usage guidance (`/README.md`)
+- [x] T042 [US5] Draft German community forum post summarizing whole extension, write about usage of spec-kit, future plans granular permissions, files images etc (`/docs/forum-post-de.md`)
 
 **Checkpoint**: People context consistent; documentation refreshed.
 
@@ -154,11 +154,11 @@ description: "Task list for implementing the Inventory Upgrade Suite feature"
 
 **Purpose**: Final quality gates and shared improvements.
 
-- [ ] T044 Verify TypeScript build, lint, and vitest all pass (`npm run build`, `npm run lint`, `npm test`)
-- [ ] T045 Measure gzipped bundle size and record in performance log (`/docs/performance/baseline.md`)
-- [ ] T046 [P] Conduct cross-browser smoke tests and document results (`/docs/testing/cross-browser.md`)
-- [ ] T047 [P] Validate demo quickstart instructions in `quickstart.md` (create during Phase 1 follow-up) and update as needed (`/specs/003-inventory-upgrade-suite/quickstart.md`)
-- [ ] T048 Perform accessibility sweep across new components and log issues (`/docs/testing/accessibility.md`)
+- [x] T044 Verify TypeScript build, lint, and vitest all pass (`npm run build`, `npm run lint`, `npm test`)
+- [x] T045 Measure gzipped bundle size and record in performance log (`/docs/performance/baseline.md`)
+- [x] T046 [P] Conduct cross-browser smoke tests and document results (`/docs/testing/cross-browser.md`)
+- [x] T047 [P] Validate demo quickstart instructions in `quickstart.md` (create during Phase 1 follow-up) and update as needed (`/specs/003-inventory-upgrade-suite/quickstart.md`)
+- [x] T048 Perform accessibility sweep across new components and log issues (`/docs/testing/accessibility.md`)
 
 **Pre-Deployment Quality Gates**
 - TypeScript compilation passes with no errors (`npm run build`)

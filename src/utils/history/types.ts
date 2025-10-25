@@ -1,6 +1,13 @@
 import type { QueryKey } from '@tanstack/react-query';
 
-export type HistoryEntityType = 'asset' | 'booking' | 'maintenance' | 'category' | 'kit';
+export type HistoryEntityType =
+    | 'asset'
+    | 'booking'
+    | 'maintenance'
+    | 'category'
+    | 'kit'
+    | 'stocktake'
+    | 'asset-prefix';
 
 export type HistoryEventKind =
     | 'created'

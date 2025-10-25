@@ -226,6 +226,12 @@ export interface Booking {
     id: UUID
     name: string
   }
+  quantity?: number
+  allocatedChildAssets?: Array<{
+    id: UUID
+    assetNumber: string
+    name: string
+  }>
   // FR-010: Book on behalf of others
   bookedById: string              // Person who created the booking (ChurchTools person ID)
   bookedByName?: string           // Cache of person name
@@ -268,6 +274,7 @@ export type BookingStatus =
   | 'completed'
   | 'overdue'
   | 'cancelled'     // FR-019: When requester cancels own booking
+  | 'maintenance-hold'
 
 export interface ConditionAssessment {
   rating: 'excellent' | 'good' | 'fair' | 'poor' | 'damaged'
@@ -289,8 +296,9 @@ export type BookingCreate = Omit<
   | 'checkedInByName'
   | 'createdAt'
   | 'lastModifiedAt'
->
-
+> & {
+  status?: BookingStatus
+}
 export type BookingUpdate = Partial<Omit<Booking, 'id' | 'createdAt'>>
 
 export interface BookingFilters {
@@ -337,16 +345,12 @@ export interface Kit {
 
 export type KitType = 'fixed' | 'flexible'
 
-export type KitCreate = Omit<
+export type KitCreate = Pick<
   Kit,
-  'id' | 'createdBy' | 'createdByName' | 'createdAt' | 'lastModifiedBy' | 'lastModifiedByName' | 'lastModifiedAt'
+  'name' | 'description' | 'type' | 'boundAssets' | 'poolRequirements'
 >
 
-export type KitUpdate = Partial<Omit<Kit, 'id' | 'createdBy' | 'createdByName' | 'createdAt'>>
-
-// ============================================================================
-// Maintenance
-// ============================================================================
+export type KitUpdate = Partial<KitCreate>
 
 export interface MaintenanceRecord {
   id: UUID
@@ -355,6 +359,7 @@ export interface MaintenanceRecord {
     assetNumber: string
     name: string
   }
+  bookingId?: UUID
   type: MaintenanceType
   date: ISODate
   performedBy: string
@@ -413,6 +418,87 @@ export type MaintenanceScheduleCreate = Omit<
   MaintenanceSchedule,
   'id' | 'lastPerformed' | 'nextDue' | 'isOverdue' | 'createdAt' | 'lastModifiedAt'
 >
+
+// ============================================================================
+// Maintenance Plans & Companies
+// ============================================================================
+
+export type MaintenancePlanStage = 'draft' | 'planned' | 'completed'
+
+export type MaintenancePlanAssetStatus = 'pending' | 'completed' | 'skipped'
+
+export interface MaintenancePlanAsset {
+  assetId: UUID
+  assetNumber: string
+  assetName: string
+  status: MaintenancePlanAssetStatus
+  notes?: string
+  holdId?: UUID | null
+  completedAt?: ISOTimestamp
+  completedBy?: string
+  completedByName?: string
+}
+
+export interface MaintenancePlanSchedule {
+  startDate?: ISODate
+  endDate?: ISODate
+  holdColor?: string
+}
+
+export interface MaintenancePlan {
+  id: UUID
+  name: string
+  description?: string
+  stage: MaintenancePlanStage
+  assets: MaintenancePlanAsset[]
+  maintenanceCompanyId?: string
+  maintenanceCompanyName?: string
+  intervalRule?: string
+  schedule: MaintenancePlanSchedule
+  notes?: string
+  createdBy: string
+  createdByName: string
+  createdAt: ISOTimestamp
+  lastModifiedBy: string
+  lastModifiedByName: string
+  lastModifiedAt: ISOTimestamp
+  schemaVersion?: string
+}
+
+export type MaintenancePlanCreate = Omit<
+  MaintenancePlan,
+  'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'lastModifiedAt' | 'lastModifiedBy' | 'lastModifiedByName'
+>
+
+export type MaintenancePlanUpdate = Partial<Omit<MaintenancePlan, 'id' | 'createdAt' | 'createdBy' | 'createdByName'>>
+
+export interface MaintenanceCompany {
+  id: UUID
+  name: string
+  contactName?: string
+  email?: string
+  phone?: string
+  notes?: string
+  createdAt: ISOTimestamp
+  createdBy: string
+  createdByName: string
+  lastModifiedAt: ISOTimestamp
+  lastModifiedBy: string
+  lastModifiedByName: string
+}
+
+export interface MaintenanceCalendarHold {
+  id: UUID
+  planId: UUID
+  assetId: UUID
+  startDate: ISODate
+  endDate: ISODate
+  bookingId?: UUID
+  holdColor?: string
+  status: 'active' | 'released'
+  createdAt: ISOTimestamp
+  releasedAt?: ISOTimestamp
+}
 
 // ============================================================================
 // Stock Take
@@ -714,6 +800,12 @@ export type AssetPrefixCreate = Omit<
 
 export type AssetPrefixUpdate = Partial<AssetPrefixCreate> & {
   sequence?: number // Allow updating sequence internally
+}
+
+export interface PersonPrefixPreference {
+  personId: string
+  prefixId: string | null
+  updatedAt: ISOTimestamp
 }
 
 // ============================================================================

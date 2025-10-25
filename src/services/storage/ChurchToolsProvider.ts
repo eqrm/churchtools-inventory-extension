@@ -22,6 +22,7 @@ import type {
   MaintenanceRecordCreate,
   MaintenanceSchedule,
   MaintenanceScheduleCreate,
+  MaintenanceCalendarHold,
   StockTakeSession,
   StockTakeSessionCreate,
   StockTakeStatus,
@@ -1280,11 +1281,14 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
       throw new Error('Asset ist erforderlich');
     }
     
+    const fallbackName =
+      data.requestedByName || data.bookedByName || data.bookingForName || 'Unknown';
+    const requestedById = data.requestedBy ?? data.bookedById ?? data.bookingForId;
+
     // Get person info for requestedBy
-    const requestedByName = await this.resolvePersonName(
-      data.requestedBy,
-      data.requestedByName || 'Unknown'
-    );
+    const requestedByName = await this.resolvePersonName(requestedById, fallbackName);
+    const bookedByName = data.bookedByName ?? requestedByName;
+    const bookingForName = data.bookingForName ?? requestedByName;
     
     return {
       asset: {
@@ -1296,13 +1300,21 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
         id: data.kit.id,
         name: data.kit.name,
       } : undefined,
+      bookingMode: data.bookingMode ?? 'date-range',
+      date: data.date,
+      startTime: data.startTime,
+      endTime: data.endTime,
       startDate: data.startDate,
       endDate: data.endDate,
       purpose: data.purpose,
       notes: data.notes,
-      status: 'pending',
-      requestedBy: data.requestedBy,
-      requestedByName: requestedByName,
+      status: data.status ?? 'pending',
+      bookedById: data.bookedById ?? requestedById ?? '',
+      bookedByName,
+      bookingForId: data.bookingForId ?? requestedById ?? '',
+      bookingForName,
+      requestedBy: requestedById ?? data.requestedBy ?? '',
+      requestedByName,
       schemaVersion: data.schemaVersion ?? CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
       lastModifiedAt: new Date().toISOString(),
@@ -1400,8 +1412,44 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
         changedByName: `${user.firstName} ${user.lastName}`,
       });
     }
-    
+
     return booking;
+  }
+
+  async deleteBooking(id: string): Promise<void> {
+    const booking = await this.getBooking(id);
+    if (!booking) {
+      return;
+    }
+
+    const category = await this.getBookingCategory();
+    const user = await this.apiClient.getCurrentUser();
+
+    try {
+      await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to delete booking:', error);
+      throw error;
+    }
+
+    if (booking.asset?.id) {
+      try {
+        await this.updateAsset(booking.asset.id, {
+          status: 'available',
+          inUseBy: undefined,
+        });
+      } catch (assetError) {
+        console.warn('[ChurchToolsProvider] Failed to reset asset after booking deletion:', assetError);
+      }
+    }
+
+    await this.recordChange({
+      entityType: 'booking',
+      entityId: id,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
   }
 
   async cancelBooking(id: string, reason?: string): Promise<void> {
@@ -1952,6 +2000,31 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     return record;
   }
 
+  async deleteMaintenanceRecord(id: string): Promise<void> {
+    const existing = await this.getMaintenanceRecord(id);
+    if (!existing) {
+      return;
+    }
+
+    const category = await this.getMaintenanceRecordsCategory();
+    const user = await this.apiClient.getCurrentUser();
+
+    try {
+      await this.apiClient.deleteDataValue(this.moduleId, category.id, id);
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to delete maintenance record:', error);
+      throw error;
+    }
+
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: id,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+  }
+
   private mapToMaintenanceRecord(val: unknown): MaintenanceRecord {
     const v = val as Record<string, unknown>;
     
@@ -2233,6 +2306,179 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     }
     
     return assets;
+  }
+
+  private async getMaintenanceHoldsCategory(): Promise<AssetCategory> {
+    const categories = await this.getAllCategoriesIncludingHistory();
+    let holdsCategory = categories.find((cat) => cat.name === '__MaintenanceHolds__');
+
+    if (!holdsCategory) {
+      const user = await this.apiClient.getCurrentUser();
+      const shorty = 'mhold_' + Date.now().toString().substring(-4);
+
+      const categoryData = {
+        customModuleId: Number(this.moduleId),
+        name: '__MaintenanceHolds__',
+        shorty,
+        description: 'Internal category for maintenance calendar holds',
+        data: null,
+      };
+
+      const created = await this.apiClient.createDataCategory(this.moduleId, categoryData);
+      holdsCategory = this.mapToAssetCategory(created);
+
+      await this.recordChange({
+        entityType: 'category',
+        entityId: holdsCategory.id,
+        action: 'created',
+        changedBy: user.id,
+        changedByName: `${user.firstName} ${user.lastName}`,
+      });
+    }
+
+    return holdsCategory;
+  }
+
+  private mapToMaintenanceHold(val: unknown): MaintenanceCalendarHold {
+    const raw = val as Record<string, unknown>;
+    const dataStr = (raw['value'] || raw['data']) as string | null;
+    const data = dataStr ? (JSON.parse(dataStr) as Record<string, unknown>) : raw;
+
+    const createdAt = (data['createdAt'] as string) ?? new Date().toISOString();
+    const status = (data['status'] as 'active' | 'released') ?? 'active';
+
+    return {
+      id: String(raw['id'] ?? data['id']),
+      planId: String(data['planId']),
+      assetId: String(data['assetId']),
+      startDate: String(data['startDate']),
+      endDate: String(data['endDate']),
+      bookingId: data['bookingId'] ? String(data['bookingId']) : undefined,
+      holdColor: data['holdColor'] ? String(data['holdColor']) : undefined,
+      status,
+      createdAt,
+      releasedAt: data['releasedAt'] ? String(data['releasedAt']) : undefined,
+    };
+  }
+
+  async getMaintenanceHolds(filters?: {
+    planId?: string;
+    assetId?: string;
+    status?: 'active' | 'released';
+  }): Promise<MaintenanceCalendarHold[]> {
+    const category = await this.getMaintenanceHoldsCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    let holds = values.map((entry: unknown) => this.mapToMaintenanceHold(entry));
+
+    if (filters?.planId) {
+      holds = holds.filter((hold) => hold.planId === filters.planId);
+    }
+
+    if (filters?.assetId) {
+      holds = holds.filter((hold) => hold.assetId === filters.assetId);
+    }
+
+    if (filters?.status) {
+      holds = holds.filter((hold) => hold.status === filters.status);
+    }
+
+    return holds.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
+
+  async createMaintenanceHold(
+    hold: Omit<MaintenanceCalendarHold, 'id' | 'status' | 'createdAt' | 'releasedAt'> & {
+      status?: 'active' | 'released';
+    },
+  ): Promise<MaintenanceCalendarHold> {
+    const category = await this.getMaintenanceHoldsCategory();
+    const user = await this.apiClient.getCurrentUser();
+    const now = new Date().toISOString();
+
+    const payload = {
+      ...hold,
+      status: hold.status ?? 'active',
+      createdAt: now,
+      releasedAt: hold.status === 'released' ? now : undefined,
+    };
+
+    const dataValue = {
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(payload),
+    };
+
+    const created = await this.apiClient.createDataValue(this.moduleId, category.id, dataValue);
+    const result = this.mapToMaintenanceHold(created);
+
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: result.planId,
+      entityName: result.assetId,
+      action: 'created',
+      changes: [
+        {
+          field: 'maintenanceHold',
+          oldValue: 'none',
+          newValue: `${result.assetId}:${result.startDate}-${result.endDate}`,
+        },
+      ],
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    return result;
+  }
+
+  async releaseMaintenanceHold(
+    holdId: string,
+    updates?: Partial<Omit<MaintenanceCalendarHold, 'id' | 'planId' | 'assetId' | 'startDate' | 'endDate' | 'createdAt'>>, 
+  ): Promise<MaintenanceCalendarHold> {
+    const category = await this.getMaintenanceHoldsCategory();
+    const values = await this.apiClient.getDataValues(this.moduleId, category.id);
+    const raw = values.find((entry: unknown) => String((entry as Record<string, unknown>)['id']) === holdId);
+
+    if (!raw) {
+      throw new Error(`Maintenance hold ${holdId} not found`);
+    }
+
+    const existing = this.mapToMaintenanceHold(raw);
+    const user = await this.apiClient.getCurrentUser();
+    const releasedAt = updates?.releasedAt ?? new Date().toISOString();
+
+    const payload = {
+      ...existing,
+      ...updates,
+      status: 'released' as const,
+      releasedAt,
+    };
+
+    const dataValue = {
+      id: Number(holdId),
+      dataCategoryId: Number(category.id),
+      value: JSON.stringify(payload),
+    };
+
+    const updated = await this.apiClient.updateDataValue(this.moduleId, category.id, holdId, dataValue);
+    const result = this.mapToMaintenanceHold(updated);
+
+    await this.recordChange({
+      entityType: 'maintenance',
+      entityId: result.planId,
+      entityName: result.assetId,
+      action: 'updated',
+      changes: [
+        {
+          field: 'maintenanceHoldStatus',
+          oldValue: existing.status,
+          newValue: result.status,
+        },
+      ],
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+
+    return result;
   }
 
   private mapToMaintenanceSchedule(val: unknown): MaintenanceSchedule {
@@ -2607,6 +2853,31 @@ export class ChurchToolsStorageProvider implements IStorageProvider {
     await this.apiClient.updateDataValue(this.moduleId, category.id, sessionId, dataValue);
     
     // Record change history
+    await this.recordChange({
+      entityType: 'stocktake',
+      entityId: sessionId,
+      action: 'deleted',
+      changedBy: user.id,
+      changedByName: `${user.firstName} ${user.lastName}`,
+    });
+  }
+
+  async deleteStockTakeSession(sessionId: string): Promise<void> {
+    const session = await this.getStockTakeSession(sessionId);
+    if (!session) {
+      return;
+    }
+
+    const user = await this.apiClient.getCurrentUser();
+    const category = await this.getStockTakeCategory();
+
+    try {
+      await this.apiClient.deleteDataValue(this.moduleId, category.id, sessionId);
+    } catch (error) {
+      console.error('[ChurchToolsProvider] Failed to delete stock take session:', error);
+      throw error;
+    }
+
     await this.recordChange({
       entityType: 'stocktake',
       entityId: sessionId,

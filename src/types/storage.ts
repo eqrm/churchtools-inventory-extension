@@ -27,6 +27,7 @@ import type {
   MaintenanceRecordCreate,
   MaintenanceSchedule,
   MaintenanceScheduleCreate,
+  MaintenanceCalendarHold,
   StockTakeSession,
   StockTakeSessionCreate,
   StockTakeStatus,
@@ -213,6 +214,12 @@ export interface IStorageProvider {
    * @param reason - Optional cancellation reason
    */
   cancelBooking(id: string, reason?: string): Promise<void>
+
+  /**
+   * Delete a booking record entirely (demo/reset tooling)
+   * @param id - Booking ID
+   */
+  deleteBooking(id: string): Promise<void>
   
   /**
    * Check out an asset (start booking)
@@ -318,6 +325,12 @@ export interface IStorageProvider {
    * @returns Updated maintenance record
    */
   updateMaintenanceRecord(id: string, record: Partial<MaintenanceRecord>): Promise<MaintenanceRecord>
+
+  /**
+   * Delete a maintenance record (cleanup tooling)
+   * @param id - Record ID
+   */
+  deleteMaintenanceRecord(id: string): Promise<void>
   
   /**
    * Get maintenance schedules, optionally filtered by asset
@@ -372,6 +385,30 @@ export interface IStorageProvider {
    * @returns Array of assets with upcoming maintenance
    */
   getUpcomingMaintenance(daysAhead: number): Promise<Asset[]>
+
+  /**
+   * Retrieve maintenance calendar holds filtered by plan or asset.
+   * @param filters Optional planId or assetId filters
+   */
+  getMaintenanceHolds(filters?: { planId?: string; assetId?: string; status?: 'active' | 'released' }): Promise<MaintenanceCalendarHold[]>
+
+  /**
+   * Create a maintenance calendar hold entry linked to a maintenance plan.
+   * @param hold Hold metadata including associated booking identifier
+   */
+  createMaintenanceHold(
+    hold: Omit<MaintenanceCalendarHold, 'id' | 'status' | 'createdAt' | 'releasedAt'> & { status?: 'active' | 'released' }
+  ): Promise<MaintenanceCalendarHold>
+
+  /**
+   * Release an existing maintenance hold and optionally update metadata.
+   * @param holdId Hold identifier
+   * @param updates Optional updates (bookingId, holdColor, releasedAt)
+   */
+  releaseMaintenanceHold(
+    holdId: string,
+    updates?: Partial<Omit<MaintenanceCalendarHold, 'id' | 'planId' | 'assetId' | 'startDate' | 'endDate' | 'createdAt'>>
+  ): Promise<MaintenanceCalendarHold>
   
   // ============================================================================
   // Stock Take
@@ -427,6 +464,12 @@ export interface IStorageProvider {
    * @param sessionId - Session ID
    */
   cancelStockTakeSession(sessionId: string): Promise<void>
+
+  /**
+   * Delete a stock take session entirely
+   * @param sessionId - Session ID
+   */
+  deleteStockTakeSession(sessionId: string): Promise<void>
   
   // ============================================================================
   // Change History / Audit Trail

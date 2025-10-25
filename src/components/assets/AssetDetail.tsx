@@ -34,6 +34,7 @@ import {
   IconRefresh,
   IconTag,
   IconUser,
+  IconTools,
 } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
@@ -51,11 +52,13 @@ import { ParentAssetLink } from './ParentAssetLink';
 import { ChildAssetsList } from './ChildAssetsList';
 import { ParentSummaryStatistics } from './ParentSummaryStatistics';
 import { ConvertToParentModal } from './ConvertToParentModal';
+import { AssetMaintenanceHistory } from './AssetMaintenanceHistory';
 import { MaintenanceRecordList } from '../maintenance/MaintenanceRecordList';
 import { MaintenanceRecordForm } from '../maintenance/MaintenanceRecordForm';
 import { MaintenanceReminderBadge } from '../maintenance/MaintenanceReminderBadge';
 import { formatScheduleDescription } from '../../utils/maintenanceCalculations';
 import type { Asset } from '../../types/entities';
+import { AssetAssignmentList } from './AssetAssignmentList';
 
 interface AssetDetailProps {
   assetId: string;
@@ -76,6 +79,7 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
   });
   const [convertToParentOpened, setConvertToParentOpened] = useState(false);
   const [maintenanceFormOpened, setMaintenanceFormOpened] = useState(false);
+  const maintenanceHistoryCount = history.filter(entry => entry.action === 'maintenance-performed').length;
 
   // Persist barcode history expansion state to localStorage
   useEffect(() => {
@@ -198,6 +202,14 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
           <Tabs.Tab value="overview" leftSection={<IconInfoCircle size={16} />}>
             Overview
           </Tabs.Tab>
+          <Tabs.Tab value="maintenance" leftSection={<IconTools size={16} />}>
+            Maintenance History
+            {maintenanceHistoryCount > 0 && (
+              <Badge size="sm" circle ml="xs">
+                {maintenanceHistoryCount}
+              </Badge>
+            )}
+          </Tabs.Tab>
           <Tabs.Tab value="history" leftSection={<IconHistory size={16} />}>
             History
             {history.length > 0 && (
@@ -276,6 +288,8 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
                     )}
                   </Stack>
                 </Card>
+
+                <AssetAssignmentList asset={asset} />
 
                 {/* Asset Photos */}
                 {/* Photos removed: Photo storage and gallery are disabled due to customdata size limits. */}
@@ -397,6 +411,10 @@ export function AssetDetail({ assetId, onEdit, onClose }: AssetDetailProps) {
               <AssetDetailSidebar asset={asset} allAssets={allAssets} formatDate={formatDate} InfoRow={InfoRow} />
             </Grid.Col>
           </Grid>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="maintenance" pt="md">
+          <AssetMaintenanceHistory assetId={assetId} assetName={asset.name} />
         </Tabs.Panel>
 
         <Tabs.Panel value="history" pt="md">

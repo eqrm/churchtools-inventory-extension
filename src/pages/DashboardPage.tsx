@@ -3,6 +3,7 @@ import { Container, Stack, Title, Text, Card, Grid, Group } from '@mantine/core'
 import { IconBox, IconCategory, IconHistory, IconTrendingUp } from '@tabler/icons-react';
 import { useAssets } from '../hooks/useAssets';
 import { useCategories } from '../hooks/useCategories';
+import { PrefixWarningCard } from '../components/dashboard/PrefixWarningCard';
 
 export function DashboardPage() {
   const { data: assets = [] } = useAssets();
@@ -38,6 +39,8 @@ export function DashboardPage() {
             Welcome to ChurchTools Inventory Management
           </Text>
         </div>
+
+        <PrefixWarningCard />
 
         <Grid>
           <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
