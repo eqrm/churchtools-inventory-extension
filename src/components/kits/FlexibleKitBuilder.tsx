@@ -68,7 +68,13 @@ export function FlexibleKitBuilder({ value, onChange }: FlexibleKitBuilderProps)
       const category = categories?.find((c) => c.id === selectedCategoryId);
       if (!category) return;
 
-      if (value.some((pr) => !pr.filters?.parentAssetId && pr.categoryId === category.id)) {
+      if (
+        value.some((pr) => {
+          const parentFilterRaw = pr.filters?.['parentAssetId'];
+          const parentFilter = typeof parentFilterRaw === 'string' ? parentFilterRaw : undefined;
+          return !parentFilter && pr.categoryId === category.id;
+        })
+      ) {
         return;
       }
 
@@ -87,7 +93,13 @@ export function FlexibleKitBuilder({ value, onChange }: FlexibleKitBuilderProps)
       const parentAsset = parentAssetLookup.get(selectedParentAssetId);
       if (!parentAssetOption || !parentAsset) return;
 
-      if (value.some((pr) => pr.filters?.parentAssetId === selectedParentAssetId)) {
+      if (
+        value.some((pr) => {
+          const parentFilterRaw = pr.filters?.['parentAssetId'];
+          const parentFilter = typeof parentFilterRaw === 'string' ? parentFilterRaw : undefined;
+          return parentFilter === selectedParentAssetId;
+        })
+      ) {
         return;
       }
 
@@ -116,7 +128,7 @@ export function FlexibleKitBuilder({ value, onChange }: FlexibleKitBuilderProps)
 
       <SegmentedControl
         value={mode}
-        onChange={(val: SelectionMode) => setMode(val)}
+        onChange={(val) => setMode(val as SelectionMode)}
         data={[
           { label: 'Nach Kategorie', value: 'category' },
           { label: 'Eltern-Asset', value: 'parentAsset' },
@@ -127,7 +139,8 @@ export function FlexibleKitBuilder({ value, onChange }: FlexibleKitBuilderProps)
       {value.length > 0 && (
         <Stack gap="xs">
           {value.map((pool, index) => {
-            const parentAssetId = typeof pool.filters?.parentAssetId === 'string' ? pool.filters.parentAssetId : undefined;
+            const parentFilterRaw = pool.filters?.['parentAssetId'];
+            const parentAssetId = typeof parentFilterRaw === 'string' ? parentFilterRaw : undefined;
             const parentAsset = parentAssetId ? parentAssetLookup.get(parentAssetId) : undefined;
             const displayLabel = parentAsset
               ? `${pool.quantity}x ${parentAsset.name}`
@@ -183,7 +196,7 @@ export function FlexibleKitBuilder({ value, onChange }: FlexibleKitBuilderProps)
             value={selectedParentAssetId}
             onChange={(val) => setSelectedParentAssetId(val || '')}
             searchable
-            nothingFound="Keine passenden Assets"
+            nothingFoundMessage="Keine passenden Assets"
             style={{ flex: 1 }}
           />
         )}
