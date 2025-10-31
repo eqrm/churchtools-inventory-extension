@@ -37,7 +37,7 @@ function getEnvValue(key) {
 }
 
 function getModuleKey() {
-    const raw = getEnvValue('VITE_KEY') ?? 'fkoinventorymanagement';
+    const raw = getEnvValue('VITE_KEY') ?? 'devfkoinventorymanagement';
     return raw.trim().toLowerCase();
 }
 
